@@ -1,0 +1,1707 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Crypto Trading Client</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #1a1f3a 0%, #0f1419 100%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #e8eaed;
+        }
+
+        .container {
+            max-width: 95vw;
+            margin: 0 auto;
+            background: rgba(22, 27, 46, 0.95);
+            border-radius: 16px;
+            padding: 35px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(79, 172, 254, 0.15);
+            backdrop-filter: blur(10px);
+        }
+
+        h1 {
+            font-size: 2.2rem;
+            margin-bottom: 15px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+        }
+
+        #trading-mode-indicator {
+            padding: 14px 24px;
+            margin-bottom: 25px;
+            border-radius: 12px;
+            font-weight: 700;
+            text-align: center;
+            font-size: 0.95rem;
+            letter-spacing: 1px;
+            border: 2px solid;
+        }
+
+        #main {
+            display: grid;
+            grid-template-columns: 1.2fr 2fr;
+            gap: 30px;
+            margin-top: 30px;
+        }
+
+        .chart-container {
+            background: rgba(30, 36, 58, 0.6);
+            border-radius: 12px;
+            padding: 24px;
+            margin-bottom: 24px;
+            border: 1px solid rgba(79, 172, 254, 0.2);
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .chart-container:hover {
+            border-color: rgba(79, 172, 254, 0.5);
+            box-shadow: 0 6px 20px rgba(79, 172, 254, 0.3);
+        }
+
+        /* Fullscreen chart overlay */
+        .chart-fullscreen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(15, 20, 35, 0.98);
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+            cursor: pointer;
+        }
+
+        .chart-fullscreen .chart-container {
+            width: 95%;
+            height: 60%;
+            max-width: none;
+            margin: 0;
+            cursor: pointer;
+        }
+
+        .chart-fullscreen canvas {
+            height: calc(100% - 80px) !important;
+            width: 100% !important;
+        }
+
+        .chart-close-hint {
+            position: absolute;
+            top: 30px;
+            right: 40px;
+            color: #4facfe;
+            font-size: 1.2rem;
+            font-weight: 700;
+            background: rgba(79, 172, 254, 0.2);
+            padding: 12px 24px;
+            border-radius: 8px;
+            border: 2px solid #4facfe;
+        }
+
+        .chart-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #4facfe;
+            margin-bottom: 18px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+        }
+
+        canvas {
+            width: 100% !important;
+            height: 200px !important;
+        }
+
+        #stats {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 18px;
+            margin-top: 24px;
+        }
+
+        #stats > div {
+            background: linear-gradient(135deg, rgba(79, 172, 254, 0.08) 0%, rgba(0, 242, 254, 0.08) 100%);
+            border: 1px solid rgba(79, 172, 254, 0.25);
+            border-radius: 12px;
+            padding: 18px;
+            transition: all 0.3s ease;
+        }
+
+        #stats > div:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 24px rgba(79, 172, 254, 0.25);
+            border-color: rgba(79, 172, 254, 0.4);
+        }
+
+        #stats div small {
+            display: block;
+            color: #4facfe;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 12px;
+            border-bottom: 1px solid rgba(79, 172, 254, 0.3);
+            padding-bottom: 8px;
+        }
+
+        #stats div > div {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #e8eaed;
+            line-height: 1.8;
+        }
+
+        .stat-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+        }
+
+        .stat-label {
+            color: #9db4d1;
+            font-weight: 500;
+        }
+
+        .stat-value {
+            color: #ffffff;
+            font-weight: 700;
+        }
+
+        #info {
+            background: rgba(30, 36, 58, 0.6);
+            border-radius: 12px;
+            padding: 28px;
+            max-height: 1400px;
+            min-height: 700px;
+            overflow: auto;
+            border: 1px solid rgba(79, 172, 254, 0.2);
+        }
+
+        #info::-webkit-scrollbar { width: 10px; }
+        #info::-webkit-scrollbar-track { background: rgba(15, 22, 38, 0.6); border-radius: 10px; }
+        #info::-webkit-scrollbar-thumb { background: #4facfe; border-radius: 10px; }
+        #info::-webkit-scrollbar-thumb:hover { background: #00f2fe; }
+
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            font-size: 1rem;
+        }
+
+        /* Compact columns - Details gets maximum space */
+        table thead td:nth-child(1) { width: 40px; }      /* # */
+        table thead td:nth-child(2) { width: 85px; }      /* Asset */
+        table thead td:nth-child(3) { width: 100px; }     /* Time */
+        table thead td:nth-child(4) { width: 90px; }      /* Amount */
+        table thead td:nth-child(5) { width: 70px; }      /* Type */
+        table thead td:nth-child(6) { }                   /* Details - auto width, takes rest */
+
+        table tbody td:nth-child(1) { width: 40px; text-align: center; font-size: 0.9rem; }
+        table tbody td:nth-child(2) { width: 85px; font-weight: 600; font-size: 0.95rem; }
+        table tbody td:nth-child(3) { width: 100px; font-family: 'Courier New', monospace; font-size: 0.9rem; }
+        table tbody td:nth-child(4) { width: 90px; text-align: right; font-weight: 600; }
+        table tbody td:nth-child(5) { width: 70px; text-align: center; font-size: 0.95rem; }
+        table tbody td:nth-child(6) { word-wrap: break-word; line-height: 1.5; padding-right: 20px; }
+
+        table thead td {
+            font-weight: 700;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: #0f1419;
+            padding: 14px 12px;
+            position: sticky;
+            top: 0;
+            text-transform: uppercase;
+            font-size: 0.85rem;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+        }
+
+        table thead td:first-child { border-radius: 8px 0 0 0; text-align: center; }
+        table thead td:nth-child(4) { text-align: right; padding-right: 15px; }
+        table thead td:nth-child(5) { text-align: center; }
+        table thead td:last-child { border-radius: 0 8px 0 0; }
+
+        table tbody td {
+            padding: 12px 12px;
+            border-bottom: 1px solid rgba(79, 172, 254, 0.15);
+            color: #b8c5d6;
+            vertical-align: top;
+        }
+
+        /* Highlight buy/sell state column with colors */
+        table tbody td:nth-child(5) {
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        table tbody tr:hover {
+            background: rgba(79, 172, 254, 0.08);
+        }
+
+        /* Add color coding for buy/sell rows */
+        table tbody tr.buy-row {
+            border-left: 3px solid #43e97b;
+        }
+
+        table tbody tr.sell-row {
+            border-left: 3px solid #fa709a;
+        }
+
+        button {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(79, 172, 254, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        select {
+            background: rgba(30, 36, 58, 0.8);
+            color: #4facfe;
+            border: 2px solid #4facfe;
+        }
+
+        select:focus {
+            outline: none;
+            border-color: #00f2fe;
+            box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.15);
+        }
+
+        @media (max-width: 1024px) {
+            #main { grid-template-columns: 1fr; }
+            canvas { height: 180px !important; }
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1 id="page-title">Crypto Trading Client</h1>
+    <div id="trading-mode-indicator"></div>
+    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+        <button id="try-different-assets-btn" style="padding: 8px 16px; background: #4facfe; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 600; display: none;">🔄 Try different Assets</button>
+    </div>
+
+    <div id="main">
+        <div id="prices">
+            <!-- Individual 1h charts for each asset (dynamically generated) -->
+            <div id="charts-1h-container"></div>
+
+            <div class="chart-container">
+                <div class="chart-title">📊 Last 12 Hours - Price Change % (All Assets)</div>
+                <canvas id="myChart2"></canvas>
+            </div>
+
+            <div class="chart-container" style="margin-top: 20px;">
+                <div class="chart-title">📋 Last 5 Check Prices</div>
+                <div id="last-prices" style="font-family: monospace; font-size: 0.85rem; color: #c0c0c0; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px;">
+                    Waiting for data...
+                </div>
+            </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; gap: 0;">
+            <div id="info">
+                <table id="table">
+                    <thead>
+                        <tr><td>#</td><td>Asset</td><td>Time</td><td>Amount (€)</td><td>Type</td><td>Details</td></tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <!-- Stats boxes OUTSIDE and BELOW the info container -->
+            <div id="stats" style="margin-top: 250px;">
+                <div id="current-price"><small>💰 Current Price</small><div>N/A</div></div>
+                <div id="max-price"><small>📈 Max Price</small><div>-</div></div>
+                <div id="buy-price"><small>🛒 Buy Price</small><div>-</div></div>
+                <div id="wallet-display"><small>💼 Wallet</small><div id="wallet">-</div></div>
+            </div>
+
+            <!-- Manual controls OUTSIDE and BELOW stats -->
+            <div class="chart-container" style="margin-top: 20px;">
+                <div class="chart-title">⚙️ Manual Controls</div>
+                <div style="display: flex; flex-direction: column; gap: 12px;">
+                    <select id="manual-asset-select" style="padding: 12px 16px; font-size: 1rem; border-radius: 10px; border: 2px solid #4facfe; background: rgba(30, 36, 58, 0.8); color: #4facfe; cursor: pointer; font-weight: 600;">
+                        <option value="">Select Asset...</option>
+                    </select>
+                    <div style="display: flex; gap: 12px;">
+                        <button id="manual-buy-btn" style="flex: 1; padding: 16px; font-size: 1rem; font-weight: 700; background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: #0f1419; border: none; border-radius: 10px; cursor: pointer; letter-spacing: 0.5px;">
+                            🛒 Manual BUY
+                        </button>
+                        <button id="manual-sell-btn" style="flex: 1; padding: 16px; font-size: 1rem; font-weight: 700; background: linear-gradient(135deg, #fa709a 0%, #fee140 100%); color: #0f1419; border: none; border-radius: 10px; cursor: pointer; letter-spacing: 0.5px;">
+                            💰 Manual SELL
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function(){
+    const socket = io();
+    let charts1h = {}; // Store individual 1h charts for each asset
+    let chart2 = null; // 12h chart showing all assets
+
+    // ============================================================
+    // RESET DETECTION - Must happen before loading any data!
+    // ============================================================
+    // Check if user clicked "Start New" reset button
+    // If resetInProgress flag is set, clear ALL localStorage before
+    // loading any data. This ensures a completely fresh start.
+    //
+    // Flag flow:
+    // 1. User clicks "Start New" → config.html sets flag
+    // 2. User redirected to config.html (flag persists)
+    // 3. User selects assets → clicks "Start Trading"
+    // 4. THIS CODE runs → checks flag → clears if needed
+    // 5. Flag is removed by localStorage.clear()
+    // ============================================================
+    const resetFlag = localStorage.getItem('resetInProgress');
+    console.log('🔍 Reset flag check:', resetFlag);
+    if (resetFlag === 'true') {
+        console.log('🔄 RESET DETECTED - clearing all localStorage');
+        localStorage.clear();
+        console.log('✅ localStorage cleared, all data should be fresh');
+    } else {
+        console.log('ℹ️  No reset flag - loading existing data');
+    }
+
+    // Restore from localStorage or initialize empty
+    // Load from localStorage - with detailed logging
+    const rawTableData = localStorage.getItem('tableData');
+    const rawAssetData = localStorage.getItem('assetData');
+    console.log('🔍 Raw localStorage data:', {
+        tableDataRaw: rawTableData ? rawTableData.substring(0, 100) : 'null',
+        tableDataLength: rawTableData ? rawTableData.length : 0
+    });
+
+    let tableData = JSON.parse(rawTableData || '[]');
+    let assetData = JSON.parse(rawAssetData || '{}');
+    let selectedMarkets = JSON.parse(localStorage.getItem('selectedMarkets') || '[]');
+    let priceHistory = JSON.parse(localStorage.getItem('priceHistory') || '{}');
+
+    // Listen for server session ID to detect server restarts
+    socket.on('server-session', (serverSessionId) => {
+        const storedSessionId = localStorage.getItem('serverSessionId');
+
+        console.log('📡 Server session check:', {
+            stored: storedSessionId,
+            received: serverSessionId,
+            willClear: storedSessionId && storedSessionId !== serverSessionId
+        });
+
+        if (storedSessionId && storedSessionId !== serverSessionId) {
+            // Server has restarted - clear all data
+            console.log('🔄 Server restart detected - clearing all cached data');
+
+            // Destroy all chart instances
+            if (chart2) {
+                chart2.destroy();
+                chart2 = null;
+            }
+            for (const market in charts1h) {
+                if (charts1h[market]) {
+                    charts1h[market].destroy();
+                }
+            }
+            charts1h = {};
+
+            // Clear localStorage
+            localStorage.clear();
+            tableData = [];
+            assetData = {};
+            selectedMarkets = [];
+            priceHistory = {};
+
+            // Clear UI elements
+            const tbody = document.querySelector('#table tbody');
+            if (tbody) tbody.innerHTML = '';
+
+            const charts1hContainer = document.getElementById('charts-1h-container');
+            if (charts1hContainer) charts1hContainer.innerHTML = '';
+
+            // Clear stat boxes
+            const currentPriceEl = document.getElementById('current-price');
+            if (currentPriceEl && currentPriceEl.querySelector('div')) {
+                currentPriceEl.querySelector('div').innerHTML = 'N/A';
+            }
+            const maxPriceEl = document.getElementById('max-price');
+            if (maxPriceEl && maxPriceEl.querySelector('div')) {
+                maxPriceEl.querySelector('div').innerHTML = '-';
+            }
+            const buyPriceEl = document.getElementById('buy-price');
+            if (buyPriceEl && buyPriceEl.querySelector('div')) {
+                buyPriceEl.querySelector('div').innerHTML = '-';
+            }
+            const walletEl = document.getElementById('wallet');
+            if (walletEl) walletEl.innerText = '-';
+
+            const lastPricesEl = document.getElementById('last-prices');
+            if (lastPricesEl) lastPricesEl.innerHTML = 'Waiting for data...';
+
+            // Store new session ID
+            localStorage.setItem('serverSessionId', serverSessionId);
+
+            // Reload page to start fresh
+            setTimeout(() => location.reload(), 500);
+        } else if (!storedSessionId) {
+            // First time connecting
+            localStorage.setItem('serverSessionId', serverSessionId);
+        }
+    });
+
+    // ============================================================
+    // RESET COMPLETE - Clear all client-side data
+    // ============================================================
+    // Listen for reset completion from server
+    socket.on('reset-complete', () => {
+        console.log('🔄 Reset complete signal received from server');
+
+        // Destroy all chart instances before clearing
+        if (chart2) {
+            chart2.destroy();
+            chart2 = null;
+        }
+        for (const market in charts1h) {
+            if (charts1h[market]) {
+                charts1h[market].destroy();
+            }
+        }
+        charts1h = {};
+
+        // Clear all localStorage including color assignments
+        localStorage.clear();
+
+        // Reset color assignment tracking
+        colorAssignments = {};
+        nextColorIndex = 0;
+
+        // Redirect to config page
+        window.location.href = '/config.html';
+    });
+
+    // Debug: log restored data
+    console.log('Restored from localStorage:', {
+        tableData: tableData.length,
+        assetDataKeys: Object.keys(assetData),
+        selectedMarkets,
+        priceHistoryKeys: Object.keys(priceHistory),
+        priceHistoryCounts: Object.keys(priceHistory).map(k => `${k}: ${priceHistory[k]?.length || 0}`)
+    });
+
+    // Rebuild tradeEvents from tableData to ensure they're in sync
+    // This fixes the issue where tableData and assetData.tradeEvents can get out of sync
+    if (tableData.length > 0) {
+        console.log('🔧 Rebuilding tradeEvents from tableData...');
+        // Clear existing tradeEvents
+        for (const market in assetData) {
+            if (assetData[market]) {
+                assetData[market].tradeEvents = [];
+            }
+        }
+        // Rebuild from tableData
+        tableData.forEach(entry => {
+            const market = entry.market;
+            if (assetData[market] && entry.time && entry.amount) {
+                // Parse time from "HH:MM:SS AM/PM" format
+                const timeParts = entry.time.match(/(\d+):(\d+):(\d+)\s+(AM|PM)/);
+                if (timeParts) {
+                    const now = new Date();
+                    let hours = parseInt(timeParts[1]);
+                    const minutes = parseInt(timeParts[2]);
+                    const seconds = parseInt(timeParts[3]);
+                    const ampm = timeParts[4];
+
+                    if (ampm === 'PM' && hours !== 12) hours += 12;
+                    if (ampm === 'AM' && hours === 12) hours = 0;
+
+                    now.setHours(hours, minutes, seconds, 0);
+                    const timestamp = now.getTime();
+
+                    // Get price from priceHistory at similar time, or use a default
+                    let price = null;
+                    if (priceHistory[market] && priceHistory[market].length > 0) {
+                        // Find closest price point
+                        const closest = priceHistory[market].reduce((prev, curr) => {
+                            return (Math.abs(curr.x - timestamp) < Math.abs(prev.x - timestamp) ? curr : prev);
+                        });
+                        price = closest.y;
+                    }
+
+                    if (price) {
+                        assetData[market].tradeEvents.push({
+                            x: timestamp,
+                            y: price,
+                            state: entry.state,
+                            reason: entry.reason || '',
+                            amount: entry.amount,
+                            index: entry.index || 0
+                        });
+                    }
+                }
+            }
+        });
+
+        // Log rebuilt counts
+        for (const market in assetData) {
+            if (assetData[market] && assetData[market].tradeEvents) {
+                console.log(`  ${market}: ${assetData[market].tradeEvents.length} trade events rebuilt`);
+            }
+        }
+    }
+
+    // Helper to save data to localStorage (throttled to prevent excessive writes)
+    let saveTimeout = null;
+    function saveToStorage(immediate = false) {
+        if (immediate) {
+            // Immediate save for critical data (trades)
+            if (saveTimeout) {
+                clearTimeout(saveTimeout);
+                saveTimeout = null;
+            }
+            try {
+                console.log('💾 IMMEDIATE save to localStorage:', {
+                    tableData: tableData.length,
+                    assetDataKeys: Object.keys(assetData).length
+                });
+                localStorage.setItem('tableData', JSON.stringify(tableData));
+                localStorage.setItem('assetData', JSON.stringify(assetData));
+                localStorage.setItem('selectedMarkets', JSON.stringify(selectedMarkets));
+                localStorage.setItem('priceHistory', JSON.stringify(priceHistory));
+            } catch (e) {
+                console.error('Failed to save to localStorage:', e);
+            }
+            return;
+        }
+
+        // Throttle saves to once per 30 seconds max
+        if (saveTimeout) return;
+
+        saveTimeout = setTimeout(() => {
+            try {
+                console.log('💾 Saving to localStorage:', {
+                    tableData: tableData.length,
+                    assetDataKeys: Object.keys(assetData).length
+                });
+                localStorage.setItem('tableData', JSON.stringify(tableData));
+                localStorage.setItem('assetData', JSON.stringify(assetData));
+                localStorage.setItem('selectedMarkets', JSON.stringify(selectedMarkets));
+                localStorage.setItem('priceHistory', JSON.stringify(priceHistory));
+                console.log('Saved to localStorage - priceHistory counts:', Object.keys(priceHistory).map(k => `${k}: ${priceHistory[k]?.length || 0}`));
+            } catch (e) {
+                console.error('Failed to save to localStorage:', e);
+            }
+            saveTimeout = null;
+        }, 30000); // Save at most once per 30 seconds
+    }
+
+    const $ = id => document.getElementById(id);
+    const ensureTbody = () => {
+        const tbl = $('table');
+        if (!tbl.querySelector('tbody')) {
+            const tb = document.createElement('tbody');
+            tbl.appendChild(tb);
+        }
+        return tbl.querySelector('tbody');
+    };
+
+    // ============================================================
+    // ASSET COLOR ASSIGNMENT
+    // ============================================================
+    // Each asset gets a unique, persistent color for its chart
+    // Colors are stored in localStorage to maintain consistency
+    //
+    // IMPORTANT: Avoid green and red/pink tones!
+    // - Green markers = buy signals
+    // - Red/pink markers = sell signals
+    // Using these colors for price lines makes markers hard to see
+    // ============================================================
+    const assetColors = [
+        { border: '#00d4ff', bg: 'rgba(0, 212, 255, 0.2)' },         // Cyan
+        { border: '#ff00ff', bg: 'rgba(255, 0, 255, 0.2)' },         // Magenta
+        { border: '#ffcc00', bg: 'rgba(255, 204, 0, 0.2)' },         // Gold
+        { border: '#ff9900', bg: 'rgba(255, 153, 0, 0.2)' },         // Orange
+        { border: '#9933ff', bg: 'rgba(153, 51, 255, 0.2)' },        // Purple
+        { border: '#00ffff', bg: 'rgba(0, 255, 255, 0.2)' },         // Aqua
+        { border: '#ff66ff', bg: 'rgba(255, 102, 255, 0.2)' },       // Light Magenta
+        { border: '#66ccff', bg: 'rgba(102, 204, 255, 0.2)' }        // Light Blue
+    ];
+
+    // Track assigned colors to prevent duplicates - PERSISTENT across page loads
+    let colorAssignments = JSON.parse(localStorage.getItem('colorAssignments') || '{}');
+    let nextColorIndex = parseInt(localStorage.getItem('nextColorIndex') || '0');
+
+    // Deterministic color assignment - ensures unique colors for each market
+    function getColorForMarket(market) {
+        // If already assigned, return the same color
+        if (colorAssignments[market] !== undefined) {
+            return assetColors[colorAssignments[market]];
+        }
+
+        // Assign next available color
+        colorAssignments[market] = nextColorIndex;
+        const color = assetColors[nextColorIndex];
+        nextColorIndex = (nextColorIndex + 1) % assetColors.length;
+
+        // Save to localStorage to persist across reloads
+        localStorage.setItem('colorAssignments', JSON.stringify(colorAssignments));
+        localStorage.setItem('nextColorIndex', nextColorIndex.toString());
+
+        return color;
+    }
+
+    socket.on('market-selected', (markets) => {
+        console.log('[market-selected] Received markets:', markets);
+        console.log('[market-selected] Current tableData length:', tableData.length);
+        console.log('[market-selected] Current assetData:', Object.keys(assetData));
+
+        const title = $('page-title');
+        if (title && markets) {
+            if (Array.isArray(markets)) {
+                selectedMarkets = markets;
+                title.innerText = `Crypto client: ${markets.join(', ')}`;
+
+                // ========================================================
+                // CHART CLEANUP - Remove charts for deselected assets
+                // ========================================================
+                // When user switches assets (Try Different Assets),
+                // destroy and remove charts for assets no longer selected
+                // This prevents old charts from persisting on screen
+                // ========================================================
+                for (const existingMarket in charts1h) {
+                    if (!markets.includes(existingMarket)) {
+                        console.log(`Removing chart for deselected asset: ${existingMarket}`);
+                        if (charts1h[existingMarket]) {
+                            charts1h[existingMarket].destroy();
+                            delete charts1h[existingMarket];
+                        }
+                        // Remove the chart container from DOM
+                        const chartContainer = document.getElementById(`chart-1h-${existingMarket}`);
+                        if (chartContainer) {
+                            chartContainer.remove();
+                        }
+                    }
+                }
+
+                // Note: assetData is kept in localStorage for history
+                // If user re-selects an asset, previous trade data will be restored
+
+                // Initialize asset data - but preserve existing data if already present
+                // First, rebuild tableData from all preserved tradeEvents (if any)
+                const rebuiltTableData = [];
+                markets.forEach((market, idx) => {
+                    if (!assetData[market]) {
+                        assetData[market] = {
+                            priceHistory: [],
+                            tradeEvents: [],
+                            currentPrice: null,
+                            buyPrice: '-',
+                            maxPrice: '-',
+                            lastPrices: [],
+                            color: getColorForMarket(market)
+                        };
+                    } else {
+                        // Rebuild tableData from preserved tradeEvents
+                        if (assetData[market].tradeEvents && assetData[market].tradeEvents.length > 0) {
+                            assetData[market].tradeEvents.forEach((evt) => {
+                                const timeDisplay = new Date(evt.x).toLocaleTimeString();
+                                rebuiltTableData.push({
+                                    index: evt.index || 0,
+                                    market: market,
+                                    time: timeDisplay,
+                                    amount: evt.amount || evt.y,
+                                    state: evt.state,
+                                    reason: evt.reason || 'Trade'
+                                });
+                            });
+                        }
+                    }
+                    if (!priceHistory[market]) {
+                        priceHistory[market] = [];
+                    }
+                });
+
+                // Preserve existing tableData from localStorage and add rebuilt data
+                if (rebuiltTableData.length > 0) {
+                    // Merge: keep existing tableData entries and add new ones from rebuiltTableData
+                    const existingIndices = new Set(tableData.map(t => `${t.market}-${t.index}`));
+                    rebuiltTableData.forEach(entry => {
+                        const key = `${entry.market}-${entry.index}`;
+                        if (!existingIndices.has(key)) {
+                            tableData.push(entry);
+                        }
+                    });
+                }
+
+                // Save to localStorage
+                saveToStorage();
+
+                // Update table display
+                console.log('[market-selected] Updating table, tableData length:', tableData.length);
+                if (tableData.length > 0) {
+                    const tbody = ensureTbody();
+                    tbody.innerHTML = tableData.slice().reverse().map(r => {
+                        const formattedAmount = typeof r.amount === 'number' ? r.amount.toFixed(2) : r.amount;
+                        const rowClass = r.state === 'buy' ? 'buy-row' : 'sell-row';
+                        const stateColor = r.state === 'buy' ? 'color: #43e97b' : 'color: #fa709a';
+                        return `<tr class="${rowClass}"><td>${r.index}</td><td>${r.market}</td><td>${r.time}</td><td>€${formattedAmount}</td><td style="${stateColor}">${r.state}</td><td>${r.reason}</td></tr>`;
+                    }).join('');
+                    console.log('[market-selected] Table updated with', tableData.length, 'rows');
+                } else {
+                    console.log('[market-selected] No tableData to display');
+                }
+
+                // Create 1h charts for each asset - only if not already created
+                if (!charts1h[markets[0]]) {
+                    createIndividualCharts();
+                    // Annotations will be added when first price data arrives (see current-price handler)
+                }
+
+                // Recreate 12h chart if we have preserved priceHistory data
+                const hasPreservedData = markets.some(m => priceHistory[m] && priceHistory[m].length > 0);
+                if (!chart2 && hasPreservedData) {
+                    const c2 = $('myChart2');
+                    const ctx2 = c2 && c2.getContext ? c2.getContext('2d') : null;
+                    if (ctx2) {
+                        const datasets = markets.map((market, idx) => {
+                            const prices = priceHistory[market] || [];
+                            const firstPrice = prices.length > 0 ? prices[0].y : 1;
+                            const percentageData = prices.map(p => ({
+                                x: p.x,
+                                y: ((p.y - firstPrice) / firstPrice) * 100
+                            }));
+
+                            return {
+                                label: market,
+                                borderColor: assetData[market].color.border,
+                                backgroundColor: assetData[market].color.bg,
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                pointHoverRadius: 0,
+                                tension: 0.1,
+                                data: percentageData,
+                                originalFirstPrice: firstPrice
+                            };
+                        });
+
+                        chart2 = new Chart(ctx2, {
+                            type: 'line',
+                            data: { datasets },
+                            options: {
+                                responsive: false,
+                                animation: false,
+                                plugins: {
+                                    legend: { display: true },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(context) {
+                                                return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + '%';
+                                            }
+                                        }
+                                    }
+                                },
+                                scales: {
+                                    x: {
+                                        type: 'time',
+                                        time: {
+                                            unit: 'hour',
+                                            displayFormats: { hour: 'HH:mm' },
+                                            tooltipFormat: 'MMM dd HH:mm'
+                                        },
+                                        // Always show last 12 hours - dynamic window
+                                        min: () => Date.now() - (12 * 60 * 60 * 1000), // 12 hours ago
+                                        max: () => Date.now(), // now
+                                        title: { display: false },
+                                        grid: { color: 'rgba(79, 172, 254, 0.1)' },
+                                        ticks: { color: '#9db4d1', maxTicksLimit: 8 }
+                                    },
+                                    y: {
+                                        display: true,
+                                        grid: { color: 'rgba(79, 172, 254, 0.1)' },
+                                        ticks: {
+                                            color: '#9db4d1',
+                                            callback: function(value) {
+                                                return value.toFixed(1) + '%';
+                                            }
+                                        },
+                                        title: {
+                                            display: true,
+                                            text: 'Price Change (%)',
+                                            color: '#9db4d1'
+                                        }
+                                    }
+                                }
+                            }
+                        });
+
+                        // Update annotations for 12h chart after it's created
+                        setTimeout(() => {
+                            markets.forEach(market => {
+                                updateChartAnnotations(market);
+                            });
+                        }, 100);
+                    }
+                }
+
+                // Populate dropdown for manual trading
+                const dropdown = $('manual-asset-select');
+                if (dropdown) {
+                    dropdown.innerHTML = '<option value="">Select Asset...</option>' +
+                        markets.map(m => `<option value="${m}">${m}</option>`).join('');
+                }
+
+                // Show "Try different Assets" button when trading is active
+                const tryDifferentBtn = $('try-different-assets-btn');
+                if (tryDifferentBtn) {
+                    tryDifferentBtn.style.display = 'inline-block';
+                }
+            } else {
+                // Backward compatibility for single market
+                title.innerText = `Crypto client: ${markets}`;
+            }
+        }
+    });
+
+    // Handle "Try different Assets" button
+    const tryDifferentBtn = $('try-different-assets-btn');
+    if (tryDifferentBtn) {
+        tryDifferentBtn.addEventListener('click', () => {
+            // Navigate to config page with resume flag
+            window.location.href = '/config.html?resume=true';
+        });
+    }
+
+    // On page load: restore charts and table if we have data in localStorage
+    window.addEventListener('DOMContentLoaded', () => {
+        if (selectedMarkets.length > 0 && Object.keys(priceHistory).length > 0) {
+            console.log('Restoring UI from localStorage...');
+
+            // Trigger market-selected manually to rebuild UI
+            const evt = new CustomEvent('restore-ui');
+            setTimeout(() => {
+                // Simulate market-selected event
+                const title = $('page-title');
+                if (title) {
+                    title.innerText = `Crypto client: ${selectedMarkets.join(', ')}`;
+                }
+
+                // Rebuild table
+                if (tableData.length > 0) {
+                    const tbody = ensureTbody();
+                    tbody.innerHTML = tableData.slice().reverse().map(r => {
+                        const formattedAmount = typeof r.amount === 'number' ? r.amount.toFixed(2) : r.amount;
+                        const rowClass = r.state === 'buy' ? 'buy-row' : 'sell-row';
+                        const stateColor = r.state === 'buy' ? 'color: #43e97b' : 'color: #fa709a';
+                        return `<tr class="${rowClass}"><td>${r.index}</td><td>${r.market}</td><td>${r.time}</td><td>€${formattedAmount}</td><td style="${stateColor}">${r.state}</td><td>${r.reason}</td></tr>`;
+                    }).join('');
+                }
+
+                // Update price displays from assetData
+                updateCurrentPriceDisplay();
+                updateBuyPriceDisplay();
+                updateMaxPriceDisplay();
+
+                // Rebuild 12h chart
+                if (Object.keys(priceHistory).length > 0) {
+                    const c2 = $('myChart2');
+                    const ctx2 = c2 && c2.getContext ? c2.getContext('2d') : null;
+                    if (ctx2 && !chart2) {
+                        const datasets = selectedMarkets.map((market, idx) => {
+                            const prices = priceHistory[market] || [];
+                            const firstPrice = prices.length > 0 ? prices[0].y : 1;
+                            const color = assetData[market]?.color || getColorForMarket(market);
+                            const percentageData = prices.map(p => ({
+                                x: p.x,
+                                y: ((p.y - firstPrice) / firstPrice) * 100
+                            }));
+
+                            return {
+                                label: market,
+                                borderColor: color.border,
+                                backgroundColor: color.bg,
+                                borderWidth: 2,
+                                pointRadius: 0,
+                                pointHoverRadius: 0,
+                                tension: 0.1,
+                                data: percentageData,
+                                originalFirstPrice: firstPrice
+                            };
+                        });
+
+                        chart2 = new Chart(ctx2, {
+                            type: 'line',
+                            data: { datasets },
+                            options: {
+                                responsive: false,
+                                animation: false,
+                                plugins: {
+                                    legend: { display: true },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(context) {
+                                                return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + '%';
+                                            }
+                                        }
+                                    }
+                                },
+                                scales: {
+                                    x: {
+                                        type: 'time',
+                                        time: {
+                                            unit: 'hour',
+                                            displayFormats: { hour: 'HH:mm' },
+                                            tooltipFormat: 'MMM dd HH:mm'
+                                        },
+                                        // Always show last 12 hours - dynamic window
+                                        min: () => Date.now() - (12 * 60 * 60 * 1000), // 12 hours ago
+                                        max: () => Date.now(), // now
+                                        title: { display: false },
+                                        grid: { color: 'rgba(79, 172, 254, 0.1)' },
+                                        ticks: { color: '#9db4d1', maxTicksLimit: 8 }
+                                    },
+                                    y: {
+                                        display: true,
+                                        grid: { color: 'rgba(79, 172, 254, 0.1)' },
+                                        ticks: {
+                                            color: '#9db4d1',
+                                            callback: function(value) {
+                                                return value.toFixed(1) + '%';
+                                            }
+                                        },
+                                        title: {
+                                            display: true,
+                                            text: 'Price Change (%)',
+                                            color: '#9db4d1'
+                                        }
+                                    }
+                                }
+                            }
+                        });
+                        console.log('12h chart restored with', datasets.length, 'datasets');
+                    }
+                }
+            }, 100);
+        }
+    });
+
+    function createIndividualCharts() {
+        const container = $('charts-1h-container');
+        if (!container) return;
+
+        container.innerHTML = ''; // Clear existing charts
+
+        selectedMarkets.forEach((market, idx) => {
+            const chartDiv = document.createElement('div');
+            chartDiv.className = 'chart-container';
+            chartDiv.innerHTML = `
+                <div class="chart-title">📈 ${market} - Last 1 Hour</div>
+                <canvas id="chart-1h-${market.replace(/[^a-zA-Z0-9]/g, '-')}"></canvas>
+            `;
+            container.appendChild(chartDiv);
+
+            // Create chart
+            const canvas = chartDiv.querySelector('canvas');
+            if (canvas && canvas.getContext) {
+                const ctx = canvas.getContext('2d');
+                charts1h[market] = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [{
+                            label: market,
+                            borderColor: assetData[market].color.border,
+                            backgroundColor: assetData[market].color.bg,
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            pointHoverRadius: 0,
+                            tension: 0.1,
+                            data: []
+                        }]
+                    },
+                    options: {
+                        responsive: false,
+                        animation: false,
+                        plugins: { legend: { display: true } },
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    unit: 'minute',
+                                    displayFormats: { minute: 'HH:mm' },
+                                    tooltipFormat: 'HH:mm:ss'
+                                },
+                                // Always show last 60 minutes - dynamic window
+                                min: () => Date.now() - (60 * 60 * 1000), // 1 hour ago
+                                max: () => Date.now(), // now
+                                title: { display: false },
+                                grid: { color: 'rgba(79, 172, 254, 0.1)' },
+                                ticks: { color: '#9db4d1', maxTicksLimit: 6 }
+                            },
+                            y: {
+                                display: true,
+                                grid: { color: 'rgba(79, 172, 254, 0.1)' },
+                                ticks: { color: '#9db4d1' }
+                            }
+                        }
+                    }
+                });
+            }
+        });
+    }
+
+    socket.on('trading-mode', (mode) => {
+        const indicator = $('trading-mode-indicator');
+        if (indicator) {
+            if (mode === 'real') {
+                indicator.innerText = '⚠️ REAL TRADING MODE ⚠️';
+                indicator.style.backgroundColor = '#ff4444';
+                indicator.style.color = 'white';
+            } else {
+                indicator.innerText = 'TEST MODE (Simulated)';
+                indicator.style.backgroundColor = '#44ff44';
+                indicator.style.color = 'black';
+            }
+        }
+    });
+
+    socket.on('wallet', (data) => {
+        console.log(`💰 wallet update (socket.on): ${data}`);
+        const walletEl = $('wallet');
+        if (walletEl) {
+            walletEl.innerText = (data !== null && data !== undefined) ? data : '-';
+        }
+    });
+
+    socket.on('checkstart', (assetsDataArray) => {
+        if (!Array.isArray(assetsDataArray) || assetsDataArray.length === 0) return;
+
+        try {
+            const now = Date.now();
+
+            // Initialize each asset's 1h chart with its price history
+            assetsDataArray.forEach(assetInfo => {
+                const market = assetInfo.market;
+                const prices = assetInfo.prices;
+
+                if (!market || !prices) return;
+
+                const startTime = now - (prices.length * 1000);
+                const data = prices.slice(Math.max(prices.length - 1000, 0)).map((p, i) => ({
+                    x: startTime + (i * 1000),
+                    y: Number(p) || 0
+                }));
+
+                // Only initialize priceHistory if it doesn't exist yet - don't overwrite accumulated data!
+                // But also sample initial data for 12h chart (every 60th point to avoid overload)
+                if (!priceHistory[market] || priceHistory[market].length === 0) {
+                    // Sample every 60 seconds worth of data for 12h chart
+                    const sampledData = data.filter((_, idx) => idx % 60 === 0);
+                    priceHistory[market] = sampledData.slice();
+                    saveToStorage();
+                }
+
+                // Update 1h chart for this asset
+                const chart = charts1h[market];
+                if (chart && chart.data && chart.data.datasets[0]) {
+                    chart.data.datasets[0].data = data;
+                    chart.update();
+                }
+            });
+
+            // Initialize 12h chart with all assets (percentage change view)
+            const c2 = $('myChart2');
+            const ctx2 = c2 && c2.getContext ? c2.getContext('2d') : null;
+            if (ctx2 && !chart2) {
+                const datasets = assetsDataArray.map((assetInfo, idx) => {
+                    const market = assetInfo.market;
+                    // Convert to percentage change from first price
+                    const prices = priceHistory[market] || [];
+                    const firstPrice = prices.length > 0 ? prices[0].y : 1;
+                    const percentageData = prices.map(p => ({
+                        x: p.x,
+                        y: ((p.y - firstPrice) / firstPrice) * 100
+                    }));
+
+                    const color = assetData[market]?.color || getColorForMarket(market);
+                    return {
+                        label: market,
+                        borderColor: color.border,
+                        backgroundColor: color.bg,
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        tension: 0.1,
+                        data: percentageData,
+                        originalFirstPrice: firstPrice // Store for later updates
+                    };
+                });
+
+                chart2 = new Chart(ctx2, {
+                    type: 'line',
+                    data: { datasets },
+                    options: {
+                        responsive: false,
+                        animation: false,
+                        plugins: {
+                            legend: { display: true },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return context.dataset.label + ': ' + context.parsed.y.toFixed(2) + '%';
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    unit: 'hour',
+                                    displayFormats: { hour: 'HH:mm' },
+                                    tooltipFormat: 'MMM dd HH:mm'
+                                },
+                                // Always show last 12 hours - dynamic window
+                                min: () => Date.now() - (12 * 60 * 60 * 1000), // 12 hours ago
+                                max: () => Date.now(), // now
+                                title: { display: false },
+                                grid: { color: 'rgba(79, 172, 254, 0.1)' },
+                                ticks: { color: '#9db4d1', maxTicksLimit: 8 }
+                            },
+                            y: {
+                                display: true,
+                                grid: { color: 'rgba(79, 172, 254, 0.1)' },
+                                ticks: {
+                                    color: '#9db4d1',
+                                    callback: function(value) {
+                                        return value.toFixed(1) + '%';
+                                    }
+                                },
+                                title: {
+                                    display: true,
+                                    text: 'Price Change (%)',
+                                    color: '#9db4d1'
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        } catch (err) {
+            console.error('Error initializing charts:', err);
+        }
+    });
+
+    socket.on('current-price', (data) => {
+        if (!data || !data.market) return;
+
+        const market = data.market;
+        const cp = data.price;
+
+        // Update current price display
+        updateCurrentPriceDisplay();
+
+        // Update 1h chart for this asset (throttled to avoid too many updates)
+        const chart = charts1h[market];
+        if (cp !== null && chart && chart.data && Array.isArray(chart.data.datasets[0].data)) {
+            try {
+                const dataset = chart.data.datasets[0].data;
+                const now = Date.now();
+
+                // Only add point if 5+ seconds since last point (avoid spam on fast WebSocket ticks)
+                const lastPoint = dataset[dataset.length - 1];
+                const shouldAdd = !lastPoint || (now - lastPoint.x) >= 5000;
+
+                if (shouldAdd) {
+                    dataset.push({ x: now, y: Number(cp) || 0 });
+
+                    // Keep only last 1 hour AND limit to 720 points max (1h at 5s intervals)
+                    const oneHourAgo = now - (60 * 60 * 1000);
+                    const filtered = dataset.filter(point => point.x >= oneHourAgo).slice(-720);
+
+                    if (filtered.length > 0) {
+                        chart.data.datasets[0].data = filtered;
+                        chart.update('none');
+                    }
+
+                    // Also update chart annotations every minute to clean up old markers
+                    // OR on first price update (when lastAnnotationUpdate is undefined)
+                    if (!window.lastAnnotationUpdate) window.lastAnnotationUpdate = {};
+                    if (!window.lastAnnotationUpdate[market] || (now - window.lastAnnotationUpdate[market]) >= 60000 || dataset.length === 1) {
+                        updateChartAnnotations(market);
+                        window.lastAnnotationUpdate[market] = now;
+                    }
+                }
+            } catch (err) {
+                console.error(`Error updating chart for ${market}:`, err);
+            }
+        }
+
+        // Update 12h chart - less frequently to avoid flashing (percentage view)
+        if (cp !== null && chart2 && priceHistory[market]) {
+            try {
+                const now = Date.now();
+
+                // Only add to 12h history every 60 seconds (not every tick) to reduce memory
+                const lastPoint = priceHistory[market][priceHistory[market].length - 1];
+                const shouldAdd = !lastPoint || (now - lastPoint.x) >= 60000;
+
+                if (shouldAdd) {
+                    priceHistory[market].push({ x: now, y: Number(cp) || 0 });
+
+                    // Keep only last 12 hours AND limit to max 720 points (12h at 1-min intervals)
+                    const twelveHoursAgo = now - (12 * 60 * 60 * 1000);
+                    priceHistory[market] = priceHistory[market].filter(point => point.x >= twelveHoursAgo).slice(-720);
+
+                    // Save only when we add to history
+                    saveToStorage();
+                }
+
+                // Update chart every 60 seconds
+                if (!window.lastChart2Update || (now - window.lastChart2Update) > 60000) {
+                    selectedMarkets.forEach((mkt, idx) => {
+                        if (chart2.data.datasets[idx]) {
+                            const prices = priceHistory[mkt] || [];
+
+                            // Always use the current first price in the history to maintain consistent baseline
+                            const firstPrice = prices.length > 0 ? prices[0].y : 1;
+
+                            // Update the stored baseline so it stays in sync
+                            chart2.data.datasets[idx].originalFirstPrice = firstPrice;
+
+                            // Convert to percentage change
+                            const percentageData = prices.map(p => ({
+                                x: p.x,
+                                y: ((p.y - firstPrice) / firstPrice) * 100
+                            }));
+
+                            chart2.data.datasets[idx].data = percentageData;
+                        }
+                    });
+                    chart2.update('none');
+                    window.lastChart2Update = now;
+                }
+            } catch (err) {
+                console.error('Error updating 12h chart:', err);
+            }
+        }
+    });
+
+    function updateCurrentPriceDisplay() {
+        const el = $('current-price');
+        if (!el) return;
+
+        const html = selectedMarkets.map(market => {
+            const price = assetData[market]?.currentPrice || 'N/A';
+            const formattedPrice = typeof price === 'number' ? price.toFixed(6) : price;
+            return `<div class="stat-row"><span class="stat-label">${market.split('-')[0]}</span><span class="stat-value">${formattedPrice}</span></div>`;
+        }).join('');
+
+        el.querySelector('div').innerHTML = html || 'N/A';
+    }
+
+    socket.on('buy-price', (data) => {
+        if (!data || !data.market) return;
+        if (assetData[data.market]) {
+            assetData[data.market].buyPrice = data.price;
+        }
+        updateBuyPriceDisplay();
+    });
+
+    socket.on('max-price', (data) => {
+        if (!data || !data.market) return;
+        console.log(`📊 max-price update: ${data.market} = ${data.price}`);
+        if (assetData[data.market]) {
+            assetData[data.market].maxPrice = data.price;
+        }
+        updateMaxPriceDisplay();
+    });
+
+    function updateBuyPriceDisplay() {
+        const el = $('buy-price');
+        if (!el) return;
+
+        const html = selectedMarkets.map(market => {
+            const price = assetData[market]?.buyPrice || '-';
+            const formattedPrice = typeof price === 'number' ? price.toFixed(6) : price;
+            return `<div class="stat-row"><span class="stat-label">${market.split('-')[0]}</span><span class="stat-value">${formattedPrice}</span></div>`;
+        }).join('');
+
+        el.querySelector('div').innerHTML = html;
+    }
+
+    function updateMaxPriceDisplay() {
+        const el = $('max-price');
+        if (!el) return;
+
+        const html = selectedMarkets.map(market => {
+            const price = assetData[market]?.maxPrice || '-';
+            const formattedPrice = typeof price === 'number' ? price.toFixed(6) : price;
+            return `<div class="stat-row"><span class="stat-label">${market.split('-')[0]}</span><span class="stat-value">${formattedPrice}</span></div>`;
+        }).join('');
+
+        el.querySelector('div').innerHTML = html;
+    }
+
+    socket.on('last-prices', (data) => {
+        if (!data || !data.market) return;
+
+        const market = data.market;
+        const prices = data.prices;
+
+        if (assetData[market]) {
+            assetData[market].lastPrices = prices;
+        }
+
+        updateLastPricesDisplay();
+    });
+
+    function updateLastPricesDisplay() {
+        const el = $('last-prices');
+        if (!el) return;
+
+        const html = selectedMarkets.map(market => {
+            const prices = assetData[market]?.lastPrices || [];
+            const shortName = market.split('-')[0];
+            return `
+                <div>
+                    <strong>${shortName}</strong><br>
+                    ${prices.map((p, i) => `${i + 1}. ${typeof p === 'number' ? p.toFixed(6) : p}`).join('<br>')}
+                </div>
+            `;
+        }).join('');
+
+        el.innerHTML = html || 'Waiting for data...';
+    }
+
+    socket.on('check', (data) => {
+        if (!data || !data.market) return;
+
+        const { market, amount, price, reason, action, wallet, eventIndex, eventTime } = data;
+
+        // Debug: log check events that might update wallet
+        if (wallet !== undefined && wallet !== null && action) {
+            if (action === 'buy' || action === 'sell') {
+                console.log(`✅ check event: ${market} ${action}, wallet=${wallet}`);
+            } else {
+                // Log non-buy/sell actions that have wallet values
+                if (wallet < 450) { // Only log if it's the suspicious 400 value
+                    console.log(`⚠️ check event: ${market} action="${action}", wallet=${wallet} (NOT buy/sell)`);
+                }
+            }
+        }
+
+        // Update wallet display ONLY on actual buy/sell events (not on every check)
+        if (wallet !== undefined && wallet !== null && action && (action === 'buy' || action === 'sell')) {
+            console.log(`💰 wallet update (check event): ${wallet} for ${market} ${action}`);
+            const walletEl = $('wallet');
+            if (walletEl) {
+                walletEl.innerText = wallet;
+            }
+        }
+
+        // Update current price in assetData
+        if (assetData[market]) {
+            assetData[market].currentPrice = price;
+        }
+
+        // table update (guard types) - only add if we have an index (buy/sell event)
+        if (eventIndex !== null && eventIndex !== undefined && typeof reason === 'string' && !reason.startsWith('No action required') && !reason.startsWith('Waiting')) {
+            const timeDisplay = eventTime ? new Date(eventTime).toLocaleTimeString() : '-';
+            tableData.push({ index: eventIndex, market, time: timeDisplay, amount, state: action, reason });
+            if (tableData.length > 100) tableData.shift();
+
+            console.log(`📝 Trade event: ${action} ${market}, tableData now has ${tableData.length} entries`);
+
+            // Save immediately on trades (important data)
+            saveToStorage(true); // immediate = true
+            const tbody = ensureTbody();
+            // Show newest events first (reverse order)
+            tbody.innerHTML = tableData.slice().reverse().map(r => {
+                const formattedAmount = typeof r.amount === 'number' ? r.amount.toFixed(2) : r.amount;
+                const rowClass = r.state === 'buy' ? 'buy-row' : 'sell-row';
+                const stateColor = r.state === 'buy' ? 'color: #43e97b' : 'color: #fa709a';
+                return `<tr class="${rowClass}"><td>${r.index}</td><td>${r.market}</td><td>${r.time}</td><td>€${formattedAmount}</td><td style="${stateColor}">${r.state}</td><td>${r.reason}</td></tr>`;
+            }).join('');
+
+            // Store trade event for chart markers
+            if (eventTime && price) {
+                const timestamp = new Date(eventTime).getTime();
+                if (assetData[market]) {
+                    assetData[market].tradeEvents.push({
+                        x: timestamp,
+                        y: price,
+                        state: action,
+                        reason: reason,
+                        amount: amount,
+                        index: eventIndex
+                    });
+                    // Trade events already saved above with immediate=true
+                }
+
+                // Update chart annotations
+                updateChartAnnotations(market);
+            }
+        }
+    });
+
+    // Function to update chart annotations with buy/sell markers for a specific asset
+    function updateChartAnnotations(market) {
+        const now = Date.now();
+
+        console.log(`🎯 updateChartAnnotations called for ${market}, tradeEvents:`, assetData[market]?.tradeEvents?.length || 0);
+
+        // Update 1h chart
+        const chart = charts1h[market];
+        if (chart && chart.data && chart.data.datasets && assetData[market]) {
+            // Use ALL trade events - chart time scale will handle visibility
+            const allEvents = assetData[market].tradeEvents || [];
+
+            console.log(`  ${market} 1h chart: ${allEvents.length} trade events to display`, allEvents);
+            console.log(`  ${market} chart has ${chart.data.datasets.length} datasets, price data points: ${chart.data.datasets[0]?.data?.length || 0}`);
+
+            // Update/create buy markers dataset
+            const buyMarkers = allEvents.filter(e => e.state === 'buy').map(e => ({ x: e.x, y: e.y }));
+            const sellMarkers = allEvents.filter(e => e.state === 'sell').map(e => ({ x: e.x, y: e.y }));
+
+            console.log(`  ${market} markers: ${buyMarkers.length} buy, ${sellMarkers.length} sell`);
+
+            // Remove old marker datasets
+            chart.data.datasets = chart.data.datasets.filter(d => !d.label.includes('BUY') && !d.label.includes('SELL'));
+
+            // Add buy markers
+            if (buyMarkers.length > 0) {
+                console.log(`  Adding ${buyMarkers.length} BUY markers to ${market} chart:`, buyMarkers);
+                chart.data.datasets.push({
+                    label: 'BUY',
+                    data: buyMarkers,
+                    backgroundColor: 'rgba(0, 255, 0, 0.8)',
+                    borderColor: 'rgba(0, 200, 0, 1)',
+                    pointRadius: 8,
+                    pointStyle: 'triangle',
+                    showLine: false
+                });
+            }
+
+            // Add sell markers
+            if (sellMarkers.length > 0) {
+                chart.data.datasets.push({
+                    label: 'SELL',
+                    data: sellMarkers,
+                    backgroundColor: 'rgba(255, 0, 0, 0.8)',
+                    borderColor: 'rgba(200, 0, 0, 1)',
+                    pointRadius: 8,
+                    pointStyle: 'rectRot',
+                    showLine: false
+                });
+            }
+
+            chart.update('none');
+        }
+
+        // Update 12h chart (chart2) - showing all assets
+        if (chart2 && chart2.data && chart2.data.datasets) {
+            // Remove old marker datasets from all markets
+            chart2.data.datasets = chart2.data.datasets.filter(d => !d.label.includes('BUY') && !d.label.includes('SELL'));
+
+            // Add markers for all markets - use ALL events, chart will handle visibility
+            for (const mkt of Object.keys(assetData)) {
+                if (assetData[mkt] && assetData[mkt].tradeEvents) {
+                    const allEvents = assetData[mkt].tradeEvents || [];
+                    const buyMarkers = allEvents.filter(e => e.state === 'buy').map(e => ({ x: e.x, y: e.y }));
+                    const sellMarkers = allEvents.filter(e => e.state === 'sell').map(e => ({ x: e.x, y: e.y }));
+
+                    // Add buy markers for this market
+                    if (buyMarkers.length > 0) {
+                        chart2.data.datasets.push({
+                            label: `${mkt} BUY`,
+                            data: buyMarkers,
+                            backgroundColor: 'rgba(0, 255, 0, 0.8)',
+                            borderColor: 'rgba(0, 200, 0, 1)',
+                            pointRadius: 8,
+                            pointStyle: 'triangle',
+                            showLine: false
+                        });
+                    }
+
+                    // Add sell markers for this market
+                    if (sellMarkers.length > 0) {
+                        chart2.data.datasets.push({
+                            label: `${mkt} SELL`,
+                            data: sellMarkers,
+                            backgroundColor: 'rgba(255, 0, 0, 0.8)',
+                            borderColor: 'rgba(200, 0, 0, 1)',
+                            pointRadius: 8,
+                            pointStyle: 'rectRot',
+                            showLine: false
+                        });
+                    }
+                }
+            }
+
+            chart2.update('none');
+        }
+    }
+
+    // helper kept for compatibility
+    window.calcPercentageDifference = function(priceOne, priceTwo) {
+        if (!priceOne) return '0.0000';
+        const diff = (priceTwo - priceOne);
+        const perc = (diff / priceOne) * 100;
+        return Number(perc).toFixed(4);
+    };
+
+    // Manual BUY and SELL button handlers
+    const manualBuyBtn = $('manual-buy-btn');
+    const manualSellBtn = $('manual-sell-btn');
+    const assetSelect = $('manual-asset-select');
+
+    if (manualBuyBtn) {
+        manualBuyBtn.addEventListener('click', () => {
+            const selectedAsset = assetSelect ? assetSelect.value : '';
+            if (!selectedAsset) {
+                alert('Please select an asset first');
+                return;
+            }
+            if (confirm(`Execute Manual BUY for ${selectedAsset} at current price?`)) {
+                socket.emit('manual-buy', selectedAsset);
+            }
+        });
+    }
+
+    if (manualSellBtn) {
+        manualSellBtn.addEventListener('click', () => {
+            const selectedAsset = assetSelect ? assetSelect.value : '';
+            if (!selectedAsset) {
+                alert('Please select an asset first');
+                return;
+            }
+            if (confirm(`Execute Manual SELL for ${selectedAsset} at current price?`)) {
+                socket.emit('manual-sell', selectedAsset);
+            }
+        });
+    }
+
+    // Chart zoom functionality using event delegation
+    document.addEventListener('click', (e) => {
+        // Check if click is inside a chart-container
+        const container = e.target.closest('.chart-container');
+
+        // If clicking on existing fullscreen, close it
+        const fullscreen = e.target.closest('.chart-fullscreen');
+        if (fullscreen) {
+            document.body.removeChild(fullscreen);
+            return;
+        }
+
+        // Ignore clicks on buttons, inputs, selects, and other interactive elements
+        if (e.target.matches('button, input, select, option, .manual-controls, .manual-controls *')) {
+            return;
+        }
+
+        // If not clicking a chart or clicking checkbox, ignore
+        if (!container || e.target.type === 'checkbox') return;
+
+        // Create fullscreen overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'chart-fullscreen';
+
+        // Clone the chart container
+        const clone = container.cloneNode(true);
+
+        // Add close hint
+        const closeHint = document.createElement('div');
+        closeHint.className = 'chart-close-hint';
+        closeHint.textContent = '✕ Click anywhere to close';
+
+        overlay.appendChild(clone);
+        overlay.appendChild(closeHint);
+
+        // Add to body
+        document.body.appendChild(overlay);
+
+        // Get the chart canvas and recreate it at full size
+        const chartCanvas = clone.querySelector('canvas');
+        if (chartCanvas) {
+            const originalCanvas = container.querySelector('canvas');
+            const chartId = originalCanvas ? originalCanvas.id : null;
+
+            console.log('Zooming chart with ID:', chartId);
+
+            // Clear the canvas to ensure clean slate
+            const ctx = chartCanvas.getContext('2d');
+
+            // Find and clone the original chart
+            let originalChart = null;
+
+            // Check 1h charts
+            for (const market in charts1h) {
+                if (charts1h[market] && charts1h[market].canvas.id === chartId) {
+                    originalChart = charts1h[market];
+                    console.log('Found 1h chart for', market);
+                    break;
+                }
+            }
+
+            // Check 12h chart
+            if (!originalChart && chart2 && chart2.canvas.id === chartId) {
+                originalChart = chart2;
+                console.log('Found 12h chart');
+            }
+
+            if (originalChart) {
+                // Create new chart with cloned data
+                setTimeout(() => {
+                    try {
+                        new Chart(ctx, {
+                            type: originalChart.config.type,
+                            data: {
+                                labels: originalChart.data.labels ? [...originalChart.data.labels] : [],
+                                datasets: originalChart.data.datasets.map(ds => ({
+                                    ...ds,
+                                    data: [...ds.data]
+                                }))
+                            },
+                            options: originalChart.config.options
+                        });
+                        console.log('Fullscreen chart created successfully');
+                    } catch (err) {
+                        console.error('Error creating fullscreen chart:', err);
+                    }
+                }, 150);
+            } else {
+                console.error('Could not find original chart with ID:', chartId);
+            }
+        }
+    });
+})();
+</script>
+</body>
+</html>

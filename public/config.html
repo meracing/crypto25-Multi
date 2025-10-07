@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Trading Bot - Configuration</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f0f23 0%, #1a1a2e 50%, #0f0f23 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            color: #e0e0e0;
+        }
+
+        .config-container {
+            max-width: 800px;
+            width: 100%;
+            background: #1a1a2e;
+            border-radius: 20px;
+            padding: 50px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+            border: 1px solid rgba(0, 245, 255, 0.2);
+        }
+
+        h1 {
+            font-size: 2.8rem;
+            margin-bottom: 15px;
+            font-weight: 800;
+            background: linear-gradient(135deg, #00f5ff 0%, #00c9ff 50%, #0099ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-align: center;
+            letter-spacing: -1px;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #00d9ff;
+            font-size: 1.1rem;
+            margin-bottom: 40px;
+            font-weight: 500;
+        }
+
+        .section {
+            margin-bottom: 35px;
+        }
+
+        .section-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #00d9ff;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+        }
+
+        .asset-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            padding: 10px;
+            background: #16213e;
+            border-radius: 10px;
+        }
+
+        .asset-grid::-webkit-scrollbar { width: 8px; }
+        .asset-grid::-webkit-scrollbar-track { background: #0f1626; border-radius: 10px; }
+        .asset-grid::-webkit-scrollbar-thumb { background: #00d9ff; border-radius: 10px; }
+
+        .asset-card {
+            background: #1a1a2e;
+            border: 2px solid rgba(0, 217, 255, 0.2);
+            border-radius: 10px;
+            padding: 12px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+            font-weight: 600;
+            color: #c0c0c0;
+        }
+
+        .asset-card:hover {
+            border-color: #00d9ff;
+            background: rgba(0, 217, 255, 0.05);
+            transform: translateY(-2px);
+        }
+
+        .asset-card.selected {
+            background: linear-gradient(135deg, rgba(0, 217, 255, 0.15) 0%, rgba(0, 153, 255, 0.15) 100%);
+            border-color: #00f5ff;
+            color: #00f5ff;
+            box-shadow: 0 4px 16px rgba(0, 245, 255, 0.3);
+        }
+
+        .asset-card.locked {
+            background: linear-gradient(135deg, rgba(255, 50, 50, 0.2) 0%, rgba(200, 0, 0, 0.2) 100%);
+            border-color: #ff3333;
+            color: #ff6666;
+            box-shadow: 0 4px 16px rgba(255, 51, 51, 0.3);
+            cursor: not-allowed;
+        }
+
+        .asset-card.locked::after {
+            content: " 🔒";
+        }
+
+        .info-text {
+            font-size: 0.85rem;
+            color: #00d9ff;
+            margin-top: 8px;
+            font-weight: 500;
+        }
+
+        .interval-buttons {
+            display: flex;
+            gap: 12px;
+        }
+
+        .interval-btn {
+            flex: 1;
+            padding: 16px;
+            background: #16213e;
+            border: 2px solid rgba(0, 217, 255, 0.3);
+            border-radius: 10px;
+            color: #c0c0c0;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .interval-btn:hover {
+            border-color: #00d9ff;
+            background: rgba(0, 217, 255, 0.05);
+        }
+
+        .interval-btn.selected {
+            background: linear-gradient(135deg, #00d9ff 0%, #0099ff 100%);
+            border-color: #00f5ff;
+            color: #0f0f23;
+            box-shadow: 0 4px 16px rgba(0, 217, 255, 0.4);
+        }
+
+        .input-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #00d9ff;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            padding: 16px;
+            background: #16213e;
+            border: 2px solid rgba(0, 217, 255, 0.3);
+            border-radius: 10px;
+            color: #00f5ff;
+            font-size: 1.1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+
+        input[type="number"]:focus {
+            outline: none;
+            border-color: #00f5ff;
+            box-shadow: 0 0 0 3px rgba(0, 245, 255, 0.1);
+        }
+
+        .mode-toggle {
+            display: flex;
+            gap: 12px;
+        }
+
+        .mode-btn {
+            flex: 1;
+            padding: 20px;
+            background: #16213e;
+            border: 2px solid rgba(0, 217, 255, 0.3);
+            border-radius: 10px;
+            color: #c0c0c0;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-align: center;
+        }
+
+        .mode-btn:hover {
+            border-color: #00d9ff;
+            background: rgba(0, 217, 255, 0.05);
+        }
+
+        .mode-btn.selected.test {
+            background: linear-gradient(135deg, #00ff88 0%, #00cc66 100%);
+            border-color: #00ff88;
+            color: #0f0f23;
+            box-shadow: 0 4px 16px rgba(0, 255, 136, 0.4);
+        }
+
+        .mode-btn.selected.real {
+            background: linear-gradient(135deg, #ff4466 0%, #cc3344 100%);
+            border-color: #ff4466;
+            color: white;
+            box-shadow: 0 4px 16px rgba(255, 68, 102, 0.4);
+        }
+
+        .start-btn {
+            width: 100%;
+            padding: 22px;
+            background: linear-gradient(135deg, #00f5ff 0%, #0099ff 100%);
+            border: none;
+            border-radius: 12px;
+            color: #0f0f23;
+            font-size: 1.3rem;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-top: 30px;
+        }
+
+        .start-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 30px rgba(0, 245, 255, 0.5);
+        }
+
+        .start-btn:active {
+            transform: translateY(0);
+        }
+
+        .start-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .reset-btn {
+            width: 100%;
+            padding: 18px;
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
+            border: 2px solid #ff4466;
+            border-radius: 12px;
+            color: white;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-top: 15px;
+        }
+
+        .reset-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 24px rgba(255, 68, 102, 0.4);
+        }
+
+        .reset-btn:active {
+            transform: translateY(0);
+        }
+
+        .mode-btn.locked {
+            opacity: 0.5;
+            cursor: not-allowed;
+            position: relative;
+        }
+
+        .mode-btn.locked::after {
+            content: " 🔒";
+        }
+
+        .lock-notice {
+            background: rgba(255, 153, 0, 0.15);
+            border: 1px solid #ff9900;
+            border-radius: 8px;
+            padding: 12px;
+            color: #ffaa00;
+            font-weight: 600;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+        }
+
+        .error-message {
+            background: rgba(255, 68, 102, 0.15);
+            border: 1px solid #ff4466;
+            border-radius: 8px;
+            padding: 12px;
+            color: #ff4466;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 1.2rem;
+            color: #00d9ff;
+        }
+    </style>
+</head>
+<body>
+    <div class="config-container">
+        <h1>🚀 Crypto Trading Bot</h1>
+        <div class="subtitle">Configure your trading parameters</div>
+
+        <div class="lock-notice" id="lock-notice" style="display: none;">
+            <span id="lock-notice-text">⚠️ Trading mode is locked because you have active positions. Click "Start New" below to reset the bot and unlock all options.</span>
+        </div>
+
+        <div class="error-message" id="error-message"></div>
+
+        <div class="section">
+            <div class="section-title">📊 Select Assets (1-5)</div>
+            <div class="asset-grid" id="asset-grid">
+                <div class="loading">Loading available markets...</div>
+            </div>
+            <div class="info-text" id="selected-count">0 assets selected</div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">⏱️ Trading Interval</div>
+            <div class="interval-buttons">
+                <button class="interval-btn selected" data-interval="10">10 Seconds</button>
+                <button class="interval-btn" data-interval="15">15 Seconds</button>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="input-group">
+                <label for="buy-amount">💰 Buy Amount per Asset (EUR)</label>
+                <input type="number" id="buy-amount" min="5" step="1" value="50" placeholder="Minimum €5">
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="section-title">🎯 Trading Mode</div>
+            <div class="mode-toggle">
+                <button class="mode-btn selected test" data-mode="test">
+                    🧪 Test Mode<br>
+                    <small style="font-size: 0.8rem; font-weight: 500;">Start with €500</small>
+                </button>
+                <button class="mode-btn" data-mode="real">
+                    ⚡ Real Trading<br>
+                    <small style="font-size: 0.8rem; font-weight: 500;">Live trading!</small>
+                </button>
+            </div>
+        </div>
+
+        <button class="start-btn" id="start-btn" disabled>🚀 Start Trading</button>
+        <button class="reset-btn" id="reset-btn">🔄 Start New (Reset Everything)</button>
+    </div>
+
+    <script>
+        // ============================================================
+        // RESET FLAG HANDLING
+        // ============================================================
+        // IMPORTANT: Don't clear resetInProgress flag here!
+        // The flag must persist from this page → index.html
+        // Index.html checks the flag on load, clears localStorage if set,
+        // then removes the flag to prevent re-clearing on subsequent loads
+        // ============================================================
+
+        const socket = io();
+        let selectedAssets = [];
+        let selectedInterval = 10;
+        let selectedMode = 'test';
+        let availableMarkets = [];
+        let lockedAssets = []; // Assets with active positions (cannot be unselected)
+        let preservedWallet = null;
+        let preservedPositions = [];
+        let modeLocked = false; // Trading mode locked when resuming with positions
+
+        // Check if we're resuming from active trading
+        const urlParams = new URLSearchParams(window.location.search);
+        const resuming = urlParams.get('resume') === 'true';
+
+        if (resuming) {
+            // Request current state from server
+            socket.emit('request-current-state');
+        }
+
+        socket.on('current-state', (state) => {
+            console.log('✅ Received current state:', state);
+            preservedWallet = state.wallet;
+            preservedPositions = state.activePositions || [];
+            selectedMode = state.tradingMode || 'test';
+
+            // Lock and pre-select assets with active positions
+            lockedAssets = preservedPositions.map(p => p.market);
+            selectedAssets = [...lockedAssets];
+
+            // Lock trading mode if there are active positions
+            modeLocked = lockedAssets.length > 0;
+
+            // Update UI to reflect trading mode and lock state
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.toggle('selected', btn.dataset.mode === selectedMode);
+
+                // Lock the mode that's NOT currently selected
+                if (modeLocked && btn.dataset.mode !== selectedMode) {
+                    btn.classList.add('locked');
+                    btn.disabled = true;
+                }
+            });
+
+            // Show lock notice if mode is locked
+            if (modeLocked) {
+                const lockNotice = document.getElementById('lock-notice');
+                const lockNoticeText = document.getElementById('lock-notice-text');
+
+                lockNotice.style.display = 'block';
+
+                // Different message for real vs test mode
+                if (selectedMode === 'real') {
+                    lockNoticeText.innerHTML = '⚠️ Trading mode is locked because you have active REAL positions. Click "Start New" to reset the bot (your crypto will remain in Bitvavo - you must sell manually if desired).';
+                } else {
+                    lockNoticeText.innerHTML = '⚠️ Trading mode is locked because you have active test positions. Click "Start New" to reset the bot and unlock all options.';
+                }
+            }
+
+            console.log(`✅ Resuming: ${lockedAssets.length} locked asset(s):`, lockedAssets);
+            console.log(`✅ Wallet: €${preservedWallet}`);
+            console.log(`✅ Active positions:`, preservedPositions);
+            console.log(`✅ Mode locked: ${modeLocked}`);
+
+            // Re-render assets to show locked ones
+            if (availableMarkets.length > 0) {
+                renderAssets();
+            }
+        });
+
+        // Request markets from server
+        socket.emit('request-markets');
+
+        socket.on('markets-list', (markets) => {
+            availableMarkets = markets;
+            renderAssets();
+        });
+
+        function renderAssets() {
+            const grid = document.getElementById('asset-grid');
+            grid.innerHTML = availableMarkets.map(market => {
+                const isLocked = lockedAssets.includes(market);
+                const isSelected = selectedAssets.includes(market);
+                let className = 'asset-card';
+                if (isLocked) className += ' locked selected';
+                else if (isSelected) className += ' selected';
+                return `<div class="${className}" data-market="${market}">${market}</div>`;
+            }).join('');
+
+            // Add click handlers
+            document.querySelectorAll('.asset-card').forEach(card => {
+                card.addEventListener('click', () => toggleAsset(card.dataset.market, card));
+            });
+
+            updateSelectedCount();
+            updateStartButton();
+        }
+
+        function toggleAsset(market, element) {
+            // Cannot unselect locked assets
+            if (lockedAssets.includes(market)) {
+                showError(`${market} has an active position and cannot be unselected`);
+                return;
+            }
+
+            if (selectedAssets.includes(market)) {
+                selectedAssets = selectedAssets.filter(m => m !== market);
+                element.classList.remove('selected');
+            } else {
+                if (selectedAssets.length >= 5) {
+                    showError('Maximum 5 assets allowed');
+                    return;
+                }
+                selectedAssets.push(market);
+                element.classList.add('selected');
+            }
+            updateSelectedCount();
+            updateStartButton();
+        }
+
+        function updateSelectedCount() {
+            document.getElementById('selected-count').textContent =
+                `${selectedAssets.length} asset${selectedAssets.length !== 1 ? 's' : ''} selected`;
+        }
+
+        function updateStartButton() {
+            const btn = document.getElementById('start-btn');
+            btn.disabled = selectedAssets.length === 0;
+        }
+
+        // Interval selection
+        document.querySelectorAll('.interval-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.interval-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                selectedInterval = parseInt(btn.dataset.interval);
+            });
+        });
+
+        // Mode selection
+        document.querySelectorAll('.mode-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                // Prevent changing mode if locked
+                if (modeLocked) {
+                    showError('Trading mode is locked. Click "Start New" to reset and unlock all options.');
+                    return;
+                }
+
+                document.querySelectorAll('.mode-btn').forEach(b => {
+                    b.classList.remove('selected', 'test', 'real');
+                });
+                btn.classList.add('selected', btn.dataset.mode);
+                selectedMode = btn.dataset.mode;
+            });
+        });
+
+        // Start button
+        document.getElementById('start-btn').addEventListener('click', async () => {
+            const buyAmount = parseFloat(document.getElementById('buy-amount').value);
+
+            if (isNaN(buyAmount) || buyAmount < 5) {
+                showError('Buy amount must be at least €5');
+                return;
+            }
+
+            if (selectedAssets.length === 0) {
+                showError('Please select at least one asset');
+                return;
+            }
+
+            // Real mode confirmation
+            if (selectedMode === 'real') {
+                if (!confirm('⚠️ WARNING: You are about to trade with REAL money. Continue?')) {
+                    return;
+                }
+            }
+
+            // Send configuration to server
+            socket.emit('trading-config', {
+                markets: selectedAssets,
+                interval: selectedInterval,
+                buyAmount: buyAmount,
+                tradingMode: selectedMode,
+                preservedWallet: preservedWallet,
+                preservedPositions: preservedPositions
+            });
+
+            // Redirect to trading dashboard
+            setTimeout(() => {
+                window.location.href = '/index.html';
+            }, 500);
+        });
+
+        // ============================================================
+        // RESET BUTTON - Complete bot reset without restarting Node
+        // ============================================================
+        // Behavior differs based on trading mode:
+        // - TEST MODE: Clears all simulated positions (safe)
+        // - REAL MODE: Only clears bot's tracking, does NOT sell crypto!
+        //              Your real positions remain in Bitvavo account
+        // ============================================================
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            let confirmMessage;
+
+            if (modeLocked && selectedMode === 'real') {
+                // Real mode with active positions
+                confirmMessage = `⚠️ REAL MODE RESET - READ CAREFULLY:
+
+This will reset the bot but will NOT sell your real crypto positions.
+
+What will happen:
+• Bot's tracking of positions will be cleared
+• Your crypto remains in your Bitvavo account
+• All locked assets become available again
+• You can choose test/real mode again
+
+⚠️ IMPORTANT: You must manually sell your crypto in Bitvavo if desired!
+
+Continue with reset?`;
+            } else if (modeLocked && selectedMode === 'test') {
+                // Test mode with active positions
+                confirmMessage = `⚠️ This will reset everything:
+
+• All test positions will be cleared (no real money)
+• Wallet will reset to €500
+• All locked assets become available
+• You can choose test/real mode again
+
+Continue?`;
+            } else {
+                // No active positions
+                confirmMessage = '⚠️ This will reset all settings and clear all data. Continue?';
+            }
+
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+
+            // Set flag so index.html knows to clear localStorage
+            localStorage.setItem('resetInProgress', 'true');
+
+            // Emit reset request to server
+            socket.emit('reset-trading-bot');
+
+            // Show loading message
+            document.querySelector('.config-container').innerHTML = `
+                <div style="text-align: center; padding: 60px;">
+                    <h2 style="color: #00d9ff; margin-bottom: 20px;">🔄 Resetting...</h2>
+                    <p style="color: #c0c0c0;">Clearing all data and resetting the bot...</p>
+                </div>
+            `;
+
+            // Reload page after reset completes
+            setTimeout(() => {
+                window.location.href = '/config.html';
+            }, 2000);
+        });
+
+        // Listen for reset confirmation from server
+        socket.on('reset-complete', () => {
+            console.log('✅ Reset complete, reloading...');
+            window.location.href = '/config.html';
+        });
+
+        function showError(message) {
+            const errorEl = document.getElementById('error-message');
+            errorEl.textContent = message;
+            errorEl.style.display = 'block';
+            setTimeout(() => {
+                errorEl.style.display = 'none';
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

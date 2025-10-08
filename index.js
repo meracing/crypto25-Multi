@@ -40,6 +40,48 @@ if (envPath) {
     console.warn('No .env or bitvavo.env found — ensure BITVAVO_KEY/SECRET are set in the environment.');
 }
 
+// ============================================================
+// GLOBAL ERROR HANDLERS - Prevent crashes from WebSocket errors
+// ============================================================
+// Catch unhandled promise rejections and exceptions
+// Bitvavo library sometimes throws WebSocket errors when reconnecting
+// These handlers prevent app crashes and allow reconnection to proceed
+// ============================================================
+process.on('unhandledRejection', (reason, promise) => {
+    const timestamp = new Date().toISOString();
+    console.error(`\n❌ [${timestamp}] Unhandled Promise Rejection:`, reason);
+
+    // Check if it's a WebSocket reconnection error (non-fatal)
+    if (reason && (
+        reason.message?.includes('WebSocket is not open') ||
+        reason.message?.includes('readyState') ||
+        reason.message?.includes('CONNECTING')
+    )) {
+        console.error('⚠️  WebSocket reconnection error (Bitvavo library) - this is expected during reconnection');
+        console.error('⚠️  Bot will recover automatically - no action needed');
+        // Don't crash, let reconnection logic handle it
+    } else {
+        console.error('⚠️  Unexpected error - please check logs');
+    }
+});
+
+process.on('uncaughtException', (error) => {
+    const timestamp = new Date().toISOString();
+    console.error(`\n❌ [${timestamp}] Uncaught Exception:`, error);
+
+    // Check if it's a WebSocket reconnection error (non-fatal)
+    if (error.message?.includes('WebSocket is not open') ||
+        error.message?.includes('readyState') ||
+        error.message?.includes('CONNECTING')) {
+        console.error('⚠️  WebSocket connection error during Bitvavo auto-reconnect');
+        console.error('⚠️  Bot will recover automatically - continuing...');
+        // Don't exit, let it recover
+    } else {
+        console.error('⚠️  Fatal error - bot exiting');
+        process.exit(1);
+    }
+});
+
 import trainingData from './data.json' assert { type: 'json' };
 
 // ----------------------
@@ -512,6 +554,9 @@ async function startTradingWithConfig(config) {
     // WebSocket provides real-time price updates from Bitvavo
     // This is more efficient than polling REST API every few seconds
     // The connection includes automatic reconnection logic with retries
+    //
+    // IMPORTANT: Bitvavo's library has auto-reconnect (100ms) that's too fast!
+    // We handle reconnection manually with proper delays
     // ============================================================
     async function startWebSocket() {
         try {
@@ -519,14 +564,16 @@ async function startTradingWithConfig(config) {
 
             // Get emitter and set up error handler
             const emitter = client.getEmitter();
+
+            // Handle WebSocket errors
             emitter.on('error', (error) => {
                 const timestamp = new Date().toISOString();
                 console.error(`\n⚠️  [${timestamp}] WebSocket error detected:`, error);
                 console.error('Error type:', error.name || 'Unknown');
                 console.error('Error message:', error.message || 'No message');
 
-                // Try to reconnect after error
-                console.log('⏰ Scheduling reconnection attempt in 5 seconds...');
+                // Try to reconnect after error with longer delay
+                console.log('⏰ Scheduling reconnection attempt in 10 seconds...');
                 setTimeout(() => {
                     console.log('🔄 Starting WebSocket reconnection process...');
                     reconnectWebSocket().catch(err => {
@@ -534,7 +581,21 @@ async function startTradingWithConfig(config) {
                         console.error('⚠️  Trading has stopped. Please restart the bot.');
                         io.emit('error', { message: 'WebSocket connection lost. Please refresh the page.' });
                     });
-                }, 5000);
+                }, 10000); // Increased from 5s to 10s
+            });
+
+            // Also handle close events
+            emitter.on('close', () => {
+                const timestamp = new Date().toISOString();
+                console.warn(`\n⚠️  [${timestamp}] WebSocket closed unexpectedly`);
+                console.log('⏰ Scheduling reconnection attempt in 10 seconds...');
+                setTimeout(() => {
+                    console.log('🔄 Starting WebSocket reconnection process...');
+                    reconnectWebSocket().catch(err => {
+                        console.error('❌ Reconnection process failed:', err);
+                        io.emit('error', { message: 'WebSocket connection lost. Please refresh the page.' });
+                    });
+                }, 10000);
             });
 
             // Initialize WebSocket connection
@@ -663,22 +724,38 @@ async function startTradingWithConfig(config) {
                 console.log('Initializing new WebSocket connection...');
                 await client.websocket.time();
 
-                // Wait for WebSocket to be fully OPEN before subscribing
-                console.log('Waiting for WebSocket connection to stabilize...');
-                await waitForWebSocketReady();
-                console.log('✅ WebSocket is ready and stable');
+                // Wait longer for WebSocket to be fully established (Bitvavo needs time)
+                console.log('Waiting 5 seconds for WebSocket to fully stabilize...');
+                await sleep(5000); // Increased from 1s to 5s to avoid Bitvavo's 100ms reconnect race
 
-                // Re-subscribe to all markets with retry logic
+                // Re-subscribe to all markets (subscriptions are already registered in startWebSocket)
+                // Just need to trigger them again after reconnection
                 let allSubscribed = true;
                 for (let i = 0; i < assets.length; i++) {
                     const asset = assets[i];
                     console.log(`Re-subscribing to ${asset.market} (${i + 1}/${assets.length})...`);
 
                     try {
-                        await subscribeWithRetry(asset.market);
-                        // Add delay between subscriptions to avoid overwhelming the connection
+                        // Wrap in try-catch to handle Bitvavo's auto-reconnect race condition
+                        try {
+                            client.websocket.subscriptionTicker(asset.market, () => {
+                                // Callback already registered, this just ensures subscription
+                            });
+                        } catch (subErr) {
+                            if (subErr.message?.includes('WebSocket is not open')) {
+                                console.warn(`  ${asset.market}: WebSocket still connecting, will retry...`);
+                                await sleep(2000); // Wait a bit more
+                                client.websocket.subscriptionTicker(asset.market, () => {});
+                            } else {
+                                throw subErr;
+                            }
+                        }
+
+                        console.log(`  ✅ ${asset.market} re-subscribed`);
+
+                        // Add delay between subscriptions to avoid overwhelming
                         if (i < assets.length - 1) {
-                            await sleep(500);
+                            await sleep(1000); // Increased from 500ms to 1s
                         }
                     } catch (err) {
                         console.error(`❌ Failed to subscribe to ${asset.market}:`, err.message);

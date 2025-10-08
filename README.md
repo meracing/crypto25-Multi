@@ -122,8 +122,8 @@ When you start the bot, you'll configure trading via the web interface:
    - Mix major coins (BTC, ETH) with altcoins for diversification
 
 3. **Set Trading Parameters**
-   - **Buy Amount**: EUR to invest per buy signal (e.g., €25-€100)
-   - **Interval**: How often to check prices (recommended: 10-30 seconds)
+   - **Buy Amount**: EUR to invest per buy signal (minimum €5, recommended €25-€100)
+   - **Interval**: How often to check prices (options: 10 or 15 seconds)
 
 4. **Click "Start Trading"**
 
@@ -170,7 +170,7 @@ The bot will:
 ```
 Starting balance: €500
 Selected assets: BTC-EUR, ETH-EUR
-Buy amount: €50
+Buy amount: €50 (minimum €5)
 Interval: 10 seconds
 
 → BTC rises → Auto-buy €50 of BTC
@@ -339,7 +339,7 @@ The bot uses Bitvavo's official Node.js library:
 - Test thoroughly in Test Mode before going live
 
 **⚠️ REAL MODE:**
-- Start with small buy amounts (€10-€25)
+- Start with small buy amounts (€5-€25, minimum €5 required by Bitvavo)
 - Monitor the bot closely during first hours
 - Understand the algorithm before using real money
 - Have a plan to manually intervene if needed
@@ -353,7 +353,7 @@ The bot uses Bitvavo's official Node.js library:
    - Experiment with buy amounts and intervals
 
 2. **Gradual Real Mode Adoption**
-   - Begin with €10-€25 buy amounts
+   - Begin with minimum €5 buy amounts (€10-€25 recommended)
    - Trade 1-2 stable assets (BTC-EUR, ETH-EUR)
    - Increase exposure only after success
 

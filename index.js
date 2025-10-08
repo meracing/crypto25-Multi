@@ -666,6 +666,7 @@ async function startTradingWithConfig(config) {
                         } else {
                             // Store latest price for processing at intervals
                             currentAsset.latestPrice = cp;
+                            currentAsset.lastPriceUpdate = Date.now(); // Track when we last received data
                         }
                     });
 
@@ -799,6 +800,13 @@ async function startTradingWithConfig(config) {
             for (const asset of assets) {
                 const elapsedMs = now - (asset.lastCheckTime || now);
                 const intervalMs = interval;
+
+                // Check if this asset's subscription has gone stale (no updates for 30 seconds)
+                const timeSinceUpdate = now - (asset.lastPriceUpdate || asset.lastCheckTime || now);
+                if (timeSinceUpdate > 30000 && asset.latestPrice !== null) {
+                    console.warn(`⚠️  [${asset.market}] WebSocket subscription may be stale (no updates for ${Math.round(timeSinceUpdate / 1000)}s)`);
+                    console.warn(`⚠️  Last price: ${asset.latestPrice}, continuing with stale data...`);
+                }
 
                 if (elapsedMs >= intervalMs && asset.latestPrice !== null) {
                     // Time to check: use the latest price from WebSocket

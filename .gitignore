@@ -1,1 +1,5 @@
 .env
+*.env
+bitvavo.env
+bitvavoold.env
+.env.*

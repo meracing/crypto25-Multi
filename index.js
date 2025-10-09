@@ -641,6 +641,7 @@ async function startTradingWithConfig(config) {
                         // Collect initial prices before starting check loop
                         if (!currentAsset.wsInitialized) {
                             currentAsset.lastPrices.push(cp);
+                            currentAsset.lastPriceUpdate = Date.now(); // Track updates during initialization too
                             const maxLength = getIndexByMinutes(PRICE_WINDOW_MINUTES, interval);
                             console.log(`[${currentAsset.market}] Collecting prices ${currentAsset.lastPrices.length}/${maxLength}`);
 
@@ -789,6 +790,57 @@ async function startTradingWithConfig(config) {
         }
     }
 
+    // ============================================================
+    // RE-SUBSCRIBE FUNCTION - Fix stale WebSocket subscriptions
+    // ============================================================
+    // When a subscription stops receiving updates, re-subscribe to that market
+    // This fixes the Bitvavo library bug where individual channels die silently
+    // ============================================================
+    async function resubscribeToMarket(asset) {
+        try {
+            console.log(`🔄 [${asset.market}] Re-subscribing to fix stale subscription...`);
+
+            // Re-establish the subscription (Bitvavo library will handle cleanup)
+            client.websocket.subscriptionTicker(asset.market, (ticker) => {
+                // Find the asset this ticker update is for
+                const currentAsset = assets.find(a => a.market === asset.market);
+                if (!currentAsset) return;
+
+                // WebSocket ticker structure: use price if available, otherwise midpoint of bid/ask
+                let cp;
+                if (ticker.price) {
+                    cp = parseFloat(ticker.price);
+                } else if (ticker.bestBid && ticker.bestAsk) {
+                    const bid = parseFloat(ticker.bestBid);
+                    const ask = parseFloat(ticker.bestAsk);
+                    cp = (bid + ask) / 2;
+                } else if (ticker.bestBid) {
+                    cp = parseFloat(ticker.bestBid);
+                } else if (ticker.bestAsk) {
+                    cp = parseFloat(ticker.bestAsk);
+                } else {
+                    return;
+                }
+
+                if (!Number.isFinite(cp)) return;
+
+                // Emit current price with asset identifier
+                io.emit('current-price', { market: currentAsset.market, price: cp });
+
+                // Store latest price and update timestamp
+                currentAsset.latestPrice = cp;
+                currentAsset.lastPriceUpdate = Date.now();
+            });
+
+            console.log(`✅ [${asset.market}] Re-subscribed successfully`);
+            asset.lastPriceUpdate = Date.now(); // Reset the timer
+            return true;
+        } catch (err) {
+            console.error(`❌ [${asset.market}] Re-subscription failed:`, err.message);
+            return false;
+        }
+    }
+
     // New loop for WebSocket - checks trading logic at configured interval
     async function runCheckLoopWebSocket() {
         console.log(`▶️ Check loop started - evaluating trading logic every ${interval / 1000} seconds`);
@@ -801,11 +853,19 @@ async function startTradingWithConfig(config) {
                 const elapsedMs = now - (asset.lastCheckTime || now);
                 const intervalMs = interval;
 
-                // Check if this asset's subscription has gone stale (no updates for 30 seconds)
+                // Check if this asset's subscription has gone stale (no updates for 60 seconds)
                 const timeSinceUpdate = now - (asset.lastPriceUpdate || asset.lastCheckTime || now);
-                if (timeSinceUpdate > 30000 && asset.latestPrice !== null) {
-                    console.warn(`⚠️  [${asset.market}] WebSocket subscription may be stale (no updates for ${Math.round(timeSinceUpdate / 1000)}s)`);
-                    console.warn(`⚠️  Last price: ${asset.latestPrice}, continuing with stale data...`);
+                if (timeSinceUpdate > 60000 && asset.latestPrice !== null) {
+                    console.warn(`⚠️  [${asset.market}] WebSocket subscription STALE (no updates for ${Math.round(timeSinceUpdate / 1000)}s)`);
+                    console.warn(`🔧 [${asset.market}] Attempting automatic re-subscription...`);
+
+                    // Attempt to re-subscribe
+                    const success = await resubscribeToMarket(asset);
+                    if (success) {
+                        console.log(`✅ [${asset.market}] Re-subscription successful, data should resume`);
+                    } else {
+                        console.error(`❌ [${asset.market}] Re-subscription failed, continuing with stale data`);
+                    }
                 }
 
                 if (elapsedMs >= intervalMs && asset.latestPrice !== null) {

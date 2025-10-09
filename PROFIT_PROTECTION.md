@@ -115,17 +115,19 @@ AFTER:  Would sell ✅ (no change, already above minimum)
 
 ## Configuration
 
-To adjust minimum profit threshold, edit line 997 in `index.js`:
+To adjust minimum profit threshold, edit line 996 in `index.js`:
 
 ```javascript
-const MIN_PROFIT_MULTIPLIER = 1.003; // +0.3% minimum profit
+const MIN_PROFIT_MULTIPLIER = 1.006; // +0.6% minimum profit
 ```
 
+**IMPORTANT**: Values below 1.006 will result in LOSSES after fees!
+
 **Recommended values:**
-- `1.002` = +0.2% minimum (very aggressive, barely covers fees)
-- `1.003` = +0.3% minimum (balanced, small guaranteed profit) ← **CURRENT**
-- `1.005` = +0.5% minimum (conservative, larger profit guarantee)
-- `1.008` = +0.8% minimum (very conservative, may miss opportunities)
+- `1.006` = +0.6% minimum (covers double fees, ~0.1% profit) ← **CURRENT & MINIMUM**
+- `1.008` = +0.8% minimum (balanced, ~0.3% profit)
+- `1.010` = +1.0% minimum (conservative, ~0.5% profit)
+- `1.015` = +1.5% minimum (very conservative, may miss opportunities)
 
 ## Mathematics
 
@@ -146,13 +148,20 @@ const MIN_PROFIT_MULTIPLIER = 1.003; // +0.3% minimum profit
 - Net received: €99.75
 - **Actual profit: -€0.25** (-0.25% LOSS!)
 
-### Why 1.003?
+### Why 1.006?
 To guarantee profit after both buy and sell fees:
 ```
-Buy: €100 → Receive crypto worth €99.75
-Need to sell for: €100 / 0.9975 / 0.9975 ≈ €100.50 for break-even
-But we use 1.003 (€100.30) for small guaranteed profit
+Buy: €50 → Fee €0.125 → Receive crypto worth €49.875
+Sell at +0.6%: Gross €50.0488 → Fee €0.1251 → Net €49.8996
+Actual profit: €0.0488 (+0.098%)
+
+Anything below +0.6% results in a LOSS:
+Sell at +0.5%: Net €49.9991 → LOSS of -€0.0009
+Sell at +0.3%: Net €49.8996 → LOSS of -€0.1004
 ```
+
+With 0.25% fee on BOTH buy AND sell, you need at least +0.5% just to break even.
+We use 1.006 (+0.6%) to guarantee a small profit after all fees.
 
 ## Testing
 

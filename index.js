@@ -974,7 +974,10 @@ async function startTradingWithConfig(config) {
                 // Don't emit max-price yet - wait until after we check if we're selling
                 // (will emit at end of function if no sell happens)
 
-                const walletValue = (buyAmount / (asset.buyPrice || 1)) * cp;
+                // Calculate GROSS value (before fees)
+                const grossValue = (buyAmount / (asset.buyPrice || 1)) * cp;
+                // Calculate NET value (after 0.25% fee) - this is what user actually receives
+                const netValue = grossValue - (grossValue * FEE_RATE);
                 console.log(`[${asset.market}][SELL MODE] Checking sell conditions - Current: ${cp}, Buy: ${asset.buyPrice}, Max: ${asset.maxPrice}, Profit: ${((cp - asset.buyPrice) / asset.buyPrice * 100).toFixed(2)}%`);
 
                 if (dataLength >= 12) {
@@ -986,20 +989,20 @@ async function startTradingWithConfig(config) {
 
                     if (cp >= (asset.buyPrice * 1.006)) {
                         if (last !== null && cp < (last * 1.0003)) {
-                            reason = `Price drop -0.3% (€${walletValue.toFixed(2)})`;
+                            reason = `Price drop -0.3% (€${netValue.toFixed(2)})`;
                         } else if (last1 !== null && cp < (last1 * 1.0004)) {
-                            reason = `Price drop -0.4% vs 2nd last (€${walletValue.toFixed(2)})`;
+                            reason = `Price drop -0.4% vs 2nd last (€${netValue.toFixed(2)})`;
                         } else if (last2 !== null && cp < (last2 * 1.0005)) {
-                            reason = `Price drop -0.5% vs 3rd last (€${walletValue.toFixed(2)})`;
+                            reason = `Price drop -0.5% vs 3rd last (€${netValue.toFixed(2)})`;
                         } else if (asset.maxPrice >= cp * 1.0006) {
-                            reason = `Drop from peak -0.6% (€${walletValue.toFixed(2)})`;
+                            reason = `Drop from peak -0.6% (€${netValue.toFixed(2)})`;
                         }
                     } else if (asset.maxPrice >= (asset.buyPrice * 1.012) && (asset.maxPrice >= (cp * 1.006)) && last !== null && last > cp) {
-                        reason = `Peak was +1.2%, now -0.6% (€${walletValue.toFixed(2)})`;
+                        reason = `Peak was +1.2%, now -0.6% (€${netValue.toFixed(2)})`;
                     } else if (asset.buyPrice >= cp * 1.15) {
-                        reason = `STOP LOSS -15% (€${walletValue.toFixed(2)})`;
+                        reason = `STOP LOSS -15% (€${netValue.toFixed(2)})`;
                     } else if (asset.waitIndex >= MAX_WAIT_INDEX) {
-                        reason = `Wait limit reached (€${walletValue.toFixed(2)})`;
+                        reason = `Wait limit reached (€${netValue.toFixed(2)})`;
                         asset.waitIndex = 0;
                     } else {
                         if (cp >= (asset.buyPrice * 1.0051) && cp <= (asset.buyPrice * 1.009)) {

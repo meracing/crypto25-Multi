@@ -988,13 +988,12 @@ async function startTradingWithConfig(config) {
                     const last2 = safeGet(dataLength - 2);
 
                     // MINIMUM PROFIT PROTECTION
-                    // Calculate what we'd get after fees: netValue = grossValue - (grossValue * 0.0025)
-                    // We need netValue >= buyAmount for break-even
-                    // This means: grossValue * 0.9975 >= buyAmount
-                    // So: grossValue >= buyAmount / 0.9975 = buyAmount * 1.002506...
-                    // Since grossValue = (buyAmount / buyPrice) * currentPrice
-                    // We need: currentPrice >= buyPrice * 1.002506 (roughly +0.25%)
-                    const MIN_PROFIT_MULTIPLIER = 1.003; // +0.3% minimum profit (covers fees + small profit)
+                    // With 0.25% fee on BOTH buy and sell, we need roughly +0.5% price increase to break even
+                    // Buy: €50 → Fee €0.125 → Receive €49.875 worth of crypto
+                    // Sell at +0.5%: €50.2493 gross → Fee €0.1256 → Net €50.1237 → Still LOSS!
+                    // Sell at +0.6%: €50.0488 → Net profit of €0.0488 (0.098%)
+                    // Therefore: MIN_PROFIT_MULTIPLIER must be at least 1.006 (+0.6%)
+                    const MIN_PROFIT_MULTIPLIER = 1.006; // +0.6% minimum (covers double fees + small profit)
 
                     if (cp >= (asset.buyPrice * 1.006)) {
                         // PROFIT-TAKING: Only when at +0.6% profit or better

@@ -987,7 +987,17 @@ async function startTradingWithConfig(config) {
                     const last1 = safeGet(dataLength - 1);
                     const last2 = safeGet(dataLength - 2);
 
+                    // MINIMUM PROFIT PROTECTION
+                    // Calculate what we'd get after fees: netValue = grossValue - (grossValue * 0.0025)
+                    // We need netValue >= buyAmount for break-even
+                    // This means: grossValue * 0.9975 >= buyAmount
+                    // So: grossValue >= buyAmount / 0.9975 = buyAmount * 1.002506...
+                    // Since grossValue = (buyAmount / buyPrice) * currentPrice
+                    // We need: currentPrice >= buyPrice * 1.002506 (roughly +0.25%)
+                    const MIN_PROFIT_MULTIPLIER = 1.003; // +0.3% minimum profit (covers fees + small profit)
+
                     if (cp >= (asset.buyPrice * 1.006)) {
+                        // PROFIT-TAKING: Only when at +0.6% profit or better
                         if (last !== null && cp < (last * 1.0003)) {
                             reason = `Price drop -0.3% (€${netValue.toFixed(2)})`;
                         } else if (last1 !== null && cp < (last1 * 1.0004)) {
@@ -998,12 +1008,24 @@ async function startTradingWithConfig(config) {
                             reason = `Drop from peak -0.6% (€${netValue.toFixed(2)})`;
                         }
                     } else if (asset.maxPrice >= (asset.buyPrice * 1.012) && (asset.maxPrice >= (cp * 1.006)) && last !== null && last > cp) {
-                        reason = `Peak was +1.2%, now -0.6% (€${netValue.toFixed(2)})`;
+                        // PEAK PROTECTION: Only sell if we still have minimum profit
+                        if (cp >= (asset.buyPrice * MIN_PROFIT_MULTIPLIER)) {
+                            reason = `Peak was +1.2%, now -0.6% (€${netValue.toFixed(2)})`;
+                        }
+                        // If cp < MIN_PROFIT, don't sell - wait for recovery or stop-loss
                     } else if (asset.buyPrice >= cp * 1.15) {
+                        // STOP LOSS: -15% - this is intentional, accept the loss
                         reason = `STOP LOSS -15% (€${netValue.toFixed(2)})`;
                     } else if (asset.waitIndex >= MAX_WAIT_INDEX) {
-                        reason = `Wait limit reached (€${netValue.toFixed(2)})`;
-                        asset.waitIndex = 0;
+                        // WAIT TIMEOUT: Only sell if we have minimum profit
+                        if (cp >= (asset.buyPrice * MIN_PROFIT_MULTIPLIER)) {
+                            reason = `Wait limit reached (€${netValue.toFixed(2)})`;
+                            asset.waitIndex = 0;
+                        } else {
+                            // If no profit yet, don't sell - keep waiting or hit stop-loss eventually
+                            console.log(`[${asset.market}] Wait limit reached but price too low (${cp} < ${(asset.buyPrice * MIN_PROFIT_MULTIPLIER).toFixed(6)}), continuing to wait`);
+                            asset.waitIndex = 0; // Reset counter, give it another chance
+                        }
                     } else {
                         if (cp >= (asset.buyPrice * 1.0051) && cp <= (asset.buyPrice * 1.009)) {
                             asset.waitIndex++;

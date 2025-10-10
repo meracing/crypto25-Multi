@@ -377,10 +377,22 @@ server.listen(PORT, () => {
 // 5. Handles both test mode (simulated) and real mode (actual trades)
 // ============================================================
 async function startTradingWithConfig(config) {
-    const { markets: selectedMarkets, interval: intervalSeconds, buyAmount, tradingMode, preservedWallet, preservedPositions } = config;
+    const {
+        markets: selectedMarkets,
+        interval: intervalSeconds,
+        buyAmount,
+        tradingMode,
+        multiStepEnabled,
+        sellSteps,
+        preservedWallet,
+        preservedPositions
+    } = config;
 
     console.log(`Starting trading with ${selectedMarkets.length} asset(s):`, selectedMarkets.join(', '));
     console.log(`Mode: ${tradingMode}, Interval: ${intervalSeconds}s, Buy amount: €${buyAmount}`);
+    if (multiStepEnabled) {
+        console.log(`Multi-step selling enabled with ${sellSteps?.length || 0} steps`);
+    }
 
     if (preservedPositions && preservedPositions.length > 0) {
         console.log(`Resuming with ${preservedPositions.length} active position(s)`);
@@ -404,6 +416,14 @@ async function startTradingWithConfig(config) {
     const selectedAssets = selectedMarkets;
     selectedMarket = selectedAssets; // Now an array
     currentTradingMode = tradingMode;
+
+    // V2.0 Phase 2: Store trading configuration for buy operations
+    const tradingConfig = {
+        buyAmount,
+        tradingMode,
+        multiStepEnabled: multiStepEnabled || false,
+        sellSteps: sellSteps || null
+    };
 
     // Create asset objects for each selected market
     const assets = selectedAssets.map(market => {
@@ -443,7 +463,8 @@ async function startTradingWithConfig(config) {
                 latestPrice: null,
                 lastCheckTime: null,
                 wsInitialized: false,
-                tradeIndex: 0
+                tradeIndex: 0,
+                batches: []  // V2.0 Phase 2: Multi-batch tracking
             };
         }
     });
@@ -1100,6 +1121,84 @@ async function startTradingWithConfig(config) {
     // ============================================================
     // BUY FUNCTION - Execute purchase of crypto
     // ============================================================
+    // V2.0 PHASE 2: HELPER FUNCTIONS FOR MULTI-BATCH SYSTEM
+    // ============================================================
+
+    /**
+     * Creates sell step configuration for a batch
+     * @param {Array} stepConfig - Array of {percentage, priceThreshold}
+     * @param {number} buyPrice - The buy price for this batch
+     * @returns {Array} Array of sell step objects
+     */
+    function createSellSteps(stepConfig, buyPrice) {
+        if (!stepConfig || !Array.isArray(stepConfig)) return null;
+
+        return stepConfig.map((step, index) => ({
+            stepId: index + 1,
+            percentage: step.percentage,
+            priceThreshold: step.priceThreshold,
+            targetPrice: buyPrice * (1 + step.priceThreshold / 100),
+            completed: false,
+            soldAt: null,
+            soldTime: null,
+            amountSold: 0,
+            cryptoSold: 0
+        }));
+    }
+
+    /**
+     * Creates stop-loss configuration for a batch
+     * @param {number} buyPrice - The buy price for this batch
+     * @param {number} percentage - Stop-loss percentage (default 15%)
+     * @returns {Object} Stop-loss configuration
+     */
+    function createStopLoss(buyPrice, percentage = 15) {
+        return {
+            enabled: true,
+            percentage: percentage,
+            triggerPrice: buyPrice * (1 - percentage / 100)
+        };
+    }
+
+    /**
+     * Calculates total crypto amount across all active batches
+     * @param {Array} batches - Array of batch objects
+     * @returns {number} Total crypto amount
+     */
+    function calculateTotalCrypto(batches) {
+        if (!batches || batches.length === 0) return 0;
+        return batches
+            .filter(b => b.status === "active")
+            .reduce((total, batch) => total + (batch.remainingCrypto || 0), 0);
+    }
+
+    /**
+     * Checks if price is dropping (sell trigger condition)
+     * @param {Array} lastPrices - Array of historical prices
+     * @param {number} currentPrice - Current price
+     * @returns {boolean} True if price is dropping
+     */
+    function checkPriceDropPattern(lastPrices, currentPrice) {
+        const dataLength = lastPrices.length - 1;
+        if (dataLength < 2) return false;
+
+        const last = lastPrices[dataLength];
+        const last1 = lastPrices[dataLength - 1];
+        const last2 = lastPrices[dataLength - 2];
+
+        // Price dropping -0.3% from last
+        if (last !== null && currentPrice < (last * 0.997)) return true;
+        // Price dropping -0.4% from 2nd last
+        if (last1 !== null && currentPrice < (last1 * 0.996)) return true;
+        // Price dropping -0.5% from 3rd last
+        if (last2 !== null && currentPrice < (last2 * 0.995)) return true;
+
+        return false;
+    }
+
+    // ============================================================
+    // BUY FUNCTION (V2.0 Enhanced with Batch Support)
+    // ============================================================
     // Real mode: Places actual market order on Bitvavo
     // Test mode: Simulates purchase with fee calculation
     //
@@ -1109,6 +1208,9 @@ async function startTradingWithConfig(config) {
     // - Example: Buy €100 → Fee €0.25 → Receive €99.75 worth of crypto
     // ============================================================
     async function buy(asset, reason, cp) {
+        let cryptoAmount = 0;
+
+        // Execute the actual buy order
         if (tradingMode === 'real') {
             try {
                 console.log(`[${asset.market}] 🔄 Attempting REAL BUY: €${buyAmount} at price ${cp}`);
@@ -1122,13 +1224,13 @@ async function startTradingWithConfig(config) {
                 );
 
                 console.log(`[${asset.market}] ✅ Order response:`, JSON.stringify(order, null, 2));
-                asset.cryptoAmount = parseFloat(order.filledAmount || 0);
+                cryptoAmount = parseFloat(order.filledAmount || 0);
 
                 const balanceData = await withRetry(() => client.balance({ symbol: 'EUR' }), { retries: 3, initialDelay: 500 });
                 wallet = parseFloat(balanceData[0].available);
                 currentWallet = wallet;
                 io.emit('wallet', wallet);
-                console.log(`[${asset.market}] Real BUY executed: ${asset.cryptoAmount} @ €${cp}, New balance: €${wallet.toFixed(2)}`);
+                console.log(`[${asset.market}] Real BUY executed: ${cryptoAmount} @ €${cp}, New balance: €${wallet.toFixed(2)}`);
             } catch (err) {
                 console.error(`[${asset.market}] ❌ Real buy failed:`, err);
                 console.error(`[${asset.market}] Error details:`, JSON.stringify(err, null, 2));
@@ -1141,13 +1243,51 @@ async function startTradingWithConfig(config) {
             // Fee is deducted from the buy amount (not added on top)
             const fee = buyAmount * FEE_RATE;
             const amountAfterFee = buyAmount - fee;
-            asset.cryptoAmount = amountAfterFee / cp;
+            cryptoAmount = amountAfterFee / cp;
             // Wallet is reduced by ONLY the buyAmount (fee already deducted from it)
             wallet = wallet - buyAmount;
             currentWallet = wallet;
             io.emit('wallet', wallet);
-            console.log(`[${asset.market}] Test BUY: €${buyAmount} (fee: €${fee.toFixed(4)}), received ${asset.cryptoAmount.toFixed(8)} crypto`);
+            console.log(`[${asset.market}] Test BUY: €${buyAmount} (fee: €${fee.toFixed(4)}), received ${cryptoAmount.toFixed(8)} crypto`);
         }
+
+        // V2.0 Phase 2: Create new batch for this purchase
+        const batch = {
+            batchId: `batch_${Date.now()}`,
+            buyPrice: cp,
+            buyAmount: buyAmount,
+            cryptoAmount: cryptoAmount,
+            remainingCrypto: cryptoAmount,
+            remainingPercent: 100,
+            maxPrice: cp,
+            waitIndex: 0,
+            status: "active",
+            sellSteps: tradingConfig.multiStepEnabled ? createSellSteps(tradingConfig.sellSteps, cp) : null,
+            stopLoss: createStopLoss(cp, 15)
+        };
+
+        // Initialize batches array if it doesn't exist (backward compatibility)
+        if (!asset.batches) {
+            asset.batches = [];
+        }
+
+        asset.batches.push(batch);
+        console.log(`[${asset.market}] Created batch ${batch.batchId}: ${cryptoAmount.toFixed(8)} crypto @ €${cp}`);
+
+        // Update legacy fields for backward compatibility
+        asset.buyPrice = cp;
+        asset.cryptoAmount = calculateTotalCrypto(asset.batches);
+        asset.maxPrice = cp;
+
+        // Emit batch creation event
+        io.emit('batch-created', {
+            market: asset.market,
+            batchId: batch.batchId,
+            buyPrice: cp,
+            buyAmount: buyAmount,
+            multiStepEnabled: tradingConfig.multiStepEnabled
+        });
+
         log(asset.market, states.BUY, reason, cp);
     }
 

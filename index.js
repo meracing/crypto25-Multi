@@ -236,6 +236,9 @@ io.on('connection', (socket) => {
             .filter(asset => asset.currentState === 'sell') // Only bought assets
             .map(asset => ({
                 market: asset.market,
+                // Batch data (V2.0)
+                batches: asset.batches || [],
+                // Legacy fields for backward compatibility (V1.0)
                 buyPrice: asset.buyPrice,
                 cryptoAmount: asset.cryptoAmount,
                 maxPrice: asset.maxPrice,
@@ -385,13 +388,18 @@ async function startTradingWithConfig(config) {
         multiStepEnabled,
         sellSteps,
         preservedWallet,
-        preservedPositions
+        preservedPositions,
+        // V2.0 Phase 3: Investment strategy
+        investmentStrategy
     } = config;
 
     console.log(`Starting trading with ${selectedMarkets.length} asset(s):`, selectedMarkets.join(', '));
     console.log(`Mode: ${tradingMode}, Interval: ${intervalSeconds}s, Buy amount: €${buyAmount}`);
     if (multiStepEnabled) {
         console.log(`Multi-step selling enabled with ${sellSteps?.length || 0} steps`);
+    }
+    if (investmentStrategy && investmentStrategy.enabled) {
+        console.log(`Investment strategy: ${investmentStrategy.mode} (Base: €${investmentStrategy.baseAmount}, Profit reinvest: ${investmentStrategy.profitReinvestPercent}%)`);
     }
 
     if (preservedPositions && preservedPositions.length > 0) {
@@ -418,11 +426,21 @@ async function startTradingWithConfig(config) {
     currentTradingMode = tradingMode;
 
     // V2.0 Phase 2: Store trading configuration for buy operations
+    // V2.0 Phase 3: Added investment strategy
     const tradingConfig = {
         buyAmount,
         tradingMode,
         multiStepEnabled: multiStepEnabled || false,
-        sellSteps: sellSteps || null
+        sellSteps: sellSteps || null,
+        // Phase 3: Investment strategy with defaults
+        investmentStrategy: investmentStrategy || {
+            enabled: false,
+            mode: 'base-only',
+            baseAmount: buyAmount || 50,
+            profitReinvestPercent: 0,
+            walletReservePercent: 100,
+            lossFallback: 'base-amount'
+        }
     };
 
     // Create asset objects for each selected market
@@ -431,12 +449,25 @@ async function startTradingWithConfig(config) {
         const preserved = preservedPositions?.find(p => p.market === market);
 
         if (preserved) {
-            // Restore the position
-            console.log(`Restoring position for ${market}: ${preserved.cryptoAmount} @ €${preserved.buyPrice}`);
+            // Restore the position (V2.0 with batch support)
+            const hasBatches = preserved.batches && preserved.batches.length > 0;
+
+            if (hasBatches) {
+                console.log(`Restoring ${preserved.batches.length} batch(es) for ${market}`);
+                preserved.batches.forEach((batch, idx) => {
+                    console.log(`  Batch ${idx + 1}: ${batch.remainingCrypto.toFixed(4)} @ €${batch.buyPrice} (${batch.remainingPercent}% remaining)`);
+                });
+            } else {
+                console.log(`Restoring position for ${market}: ${preserved.cryptoAmount} @ €${preserved.buyPrice}`);
+            }
+
             return {
                 market,
                 currentState: states.SELL, // Already bought
                 lastPrices: [],
+                // V2.0 Phase 2: Restore batches if available
+                batches: preserved.batches || [],
+                // Legacy fields for backward compatibility
                 buyPrice: preserved.buyPrice,
                 maxPrice: preserved.maxPrice,
                 waitIndex: preserved.waitIndex,
@@ -1035,7 +1066,18 @@ async function startTradingWithConfig(config) {
             // State already updated above (line 696)
         }
 
-        io.emit('check', { market: asset.market, amount: displayAmount, price: cp, reason, action: displayAction, wallet, eventIndex, eventTime });
+        // V2.0 Phase 2C: Include batch data in check event
+        io.emit('check', {
+            market: asset.market,
+            amount: displayAmount,
+            price: cp,
+            reason,
+            action: displayAction,
+            wallet,
+            eventIndex,
+            eventTime,
+            batches: asset.batches || [] // Include current batches for frontend display
+        });
 
         // Emit max-price only if we're still in SELL state (didn't just sell)
         if (asset.currentState === states.SELL) {
@@ -1132,6 +1174,93 @@ async function startTradingWithConfig(config) {
     }
 
     // ============================================================
+    // V2.0 PHASE 3: INVESTMENT STRATEGY FUNCTIONS
+    // ============================================================
+    // Dynamic buy amount calculation based on profit/loss
+    // Wallet management with profit splitting
+    // ============================================================
+
+    /**
+     * Calculate next buy amount based on investment strategy and last profit/loss
+     * @param {Object} asset - Asset object
+     * @param {number} lastProfit - Profit from last completed batch (can be negative)
+     * @returns {number} - Next buy amount in EUR
+     */
+    function calculateNextBuyAmount(asset, lastProfit = 0) {
+        const strategy = tradingConfig.investmentStrategy;
+
+        if (!strategy || !strategy.enabled) {
+            return tradingConfig.buyAmount; // Use fixed buy amount
+        }
+
+        let nextBuyAmount = strategy.baseAmount;
+
+        if (lastProfit > 0) {
+            // Profit scenario: Add portion of profit to base amount
+            const profitContribution = lastProfit * (strategy.profitReinvestPercent / 100);
+            nextBuyAmount = strategy.baseAmount + profitContribution;
+        } else if (lastProfit < 0) {
+            // Loss scenario: Use fallback strategy
+            if (strategy.lossFallback === 'stop-loss-proceeds') {
+                // Use stop-loss proceeds if higher than base amount
+                const stopLossProceeds = Math.abs(lastProfit);
+                nextBuyAmount = Math.max(strategy.baseAmount, stopLossProceeds);
+            } else {
+                // Use base amount
+                nextBuyAmount = strategy.baseAmount;
+            }
+        }
+
+        // Validate minimum €5 after 0.25% fee
+        const FEE_RATE = 0.0025;
+        const netBuyAmount = nextBuyAmount * (1 - FEE_RATE);
+
+        if (netBuyAmount < 5) {
+            console.warn(`[${asset.market}] Buy amount too small: €${nextBuyAmount.toFixed(2)} (net: €${netBuyAmount.toFixed(2)}), adjusting to minimum`);
+            // Calculate minimum buy amount to get €5 net after fees
+            return 5 / (1 - FEE_RATE); // €5.0125
+        }
+
+        console.log(`[${asset.market}] Next buy amount: €${nextBuyAmount.toFixed(2)} (Base: €${strategy.baseAmount}, Last profit: €${lastProfit.toFixed(2)})`);
+        return nextBuyAmount;
+    }
+
+    /**
+     * Get last completed batch profit/loss for an asset
+     * @param {Object} asset - Asset object
+     * @returns {number} - Last batch profit/loss in EUR (0 if no completed batches)
+     */
+    function getLastBatchProfit(asset) {
+        if (!asset.lastBatchProfit) return 0;
+        return asset.lastBatchProfit;
+    }
+
+    /**
+     * Calculate and store batch profit/loss when batch completes
+     * @param {Object} asset - Asset object
+     * @param {Object} batch - Batch that completed
+     * @param {number} totalEurReceived - Total EUR received from selling this batch
+     */
+    function recordBatchProfit(asset, batch, totalEurReceived) {
+        const profit = totalEurReceived - batch.buyAmount;
+        const profitPercent = batch.buyAmount > 0 ? (profit / batch.buyAmount) * 100 : 0;
+
+        // Store profit/loss for next buy amount calculation
+        asset.lastBatchProfit = profit;
+
+        console.log(`[${asset.market}] Batch ${batch.batchId} profit: €${profit.toFixed(2)} (${profitPercent > 0 ? '+' : ''}${profitPercent.toFixed(2)}%)`);
+
+        // V2.0 Phase 3: Track cumulative asset performance
+        if (!asset.totalProfit) asset.totalProfit = 0;
+        if (!asset.totalInvested) asset.totalInvested = 0;
+        if (!asset.totalTrades) asset.totalTrades = 0;
+
+        asset.totalProfit += profit;
+        asset.totalInvested += batch.buyAmount;
+        asset.totalTrades += 1;
+    }
+
+    // ============================================================
     // BUY FUNCTION (V2.0 Enhanced with Batch Support)
     // ============================================================
     // Real mode: Places actual market order on Bitvavo
@@ -1145,15 +1274,19 @@ async function startTradingWithConfig(config) {
     async function buy(asset, reason, cp) {
         let cryptoAmount = 0;
 
+        // V2.0 Phase 3: Calculate dynamic buy amount based on investment strategy
+        const lastProfit = getLastBatchProfit(asset);
+        const actualBuyAmount = calculateNextBuyAmount(asset, lastProfit);
+
         // Execute the actual buy order
         if (tradingMode === 'real') {
             try {
-                console.log(`[${asset.market}] 🔄 Attempting REAL BUY: €${buyAmount} at price ${cp}`);
-                console.log(`[${asset.market}] Order params:`, { market: asset.market, side: 'buy', type: 'market', amountQuote: buyAmount.toString() });
+                console.log(`[${asset.market}] 🔄 Attempting REAL BUY: €${actualBuyAmount.toFixed(2)} at price ${cp}`);
+                console.log(`[${asset.market}] Order params:`, { market: asset.market, side: 'buy', type: 'market', amountQuote: actualBuyAmount.toString() });
 
                 const order = await withRetry(() =>
                     client.placeOrder(asset.market, 'buy', 'market', 0, {
-                        amountQuote: buyAmount.toString()
+                        amountQuote: actualBuyAmount.toString()
                     }),
                     { retries: 3, initialDelay: 500 }
                 );
@@ -1176,21 +1309,21 @@ async function startTradingWithConfig(config) {
         } else {
             // Test mode: Match Bitvavo's real behavior
             // Fee is deducted from the buy amount (not added on top)
-            const fee = buyAmount * FEE_RATE;
-            const amountAfterFee = buyAmount - fee;
+            const fee = actualBuyAmount * FEE_RATE;
+            const amountAfterFee = actualBuyAmount - fee;
             cryptoAmount = amountAfterFee / cp;
-            // Wallet is reduced by ONLY the buyAmount (fee already deducted from it)
-            wallet = wallet - buyAmount;
+            // Wallet is reduced by ONLY the actualBuyAmount (fee already deducted from it)
+            wallet = wallet - actualBuyAmount;
             currentWallet = wallet;
             io.emit('wallet', wallet);
-            console.log(`[${asset.market}] Test BUY: €${buyAmount} (fee: €${fee.toFixed(4)}), received ${cryptoAmount.toFixed(8)} crypto`);
+            console.log(`[${asset.market}] Test BUY: €${actualBuyAmount.toFixed(2)} (fee: €${fee.toFixed(4)}), received ${cryptoAmount.toFixed(8)} crypto`);
         }
 
         // V2.0 Phase 2: Create new batch for this purchase
         const batch = {
             batchId: `batch_${Date.now()}`,
             buyPrice: cp,
-            buyAmount: buyAmount,
+            buyAmount: actualBuyAmount,
             cryptoAmount: cryptoAmount,
             remainingCrypto: cryptoAmount,
             remainingPercent: 100,
@@ -1198,7 +1331,9 @@ async function startTradingWithConfig(config) {
             waitIndex: 0,
             status: "active",
             sellSteps: tradingConfig.multiStepEnabled ? createSellSteps(tradingConfig.sellSteps, cp) : null,
-            stopLoss: createStopLoss(cp, 15)
+            stopLoss: createStopLoss(cp, 15),
+            // V2.0 Phase 3: Track total EUR received from selling this batch
+            totalEurReceived: 0
         };
 
         // Initialize batches array if it doesn't exist (backward compatibility)
@@ -1219,7 +1354,7 @@ async function startTradingWithConfig(config) {
             market: asset.market,
             batchId: batch.batchId,
             buyPrice: cp,
-            buyAmount: buyAmount,
+            buyAmount: actualBuyAmount,
             multiStepEnabled: tradingConfig.multiStepEnabled
         });
 
@@ -1357,6 +1492,11 @@ async function startTradingWithConfig(config) {
                 batch.remainingPercent = 0;
                 batch.status = "completed";
 
+                // V2.0 Phase 3: Record stop-loss profit (usually a loss)
+                if (!batch.totalEurReceived) batch.totalEurReceived = 0;
+                batch.totalEurReceived += eurReceived;
+                recordBatchProfit(asset, batch, batch.totalEurReceived);
+
                 io.emit('stop-loss', {
                     market: asset.market,
                     batchId: batch.batchId,
@@ -1387,8 +1527,15 @@ async function startTradingWithConfig(config) {
         const profitPercent = ((currentPrice - batch.buyPrice) / batch.buyPrice) * 100;
 
         if (profitPercent >= nextStep.priceThreshold) {
-            // Price reached target, check if it's dropping (sell trigger)
-            const isDropping = checkPriceDropPattern(asset.lastPrices, currentPrice);
+            // V2.0 Phase 3 Fix: Track step peak price for immediate sell on any drop
+            if (!nextStep.peakPrice) {
+                nextStep.peakPrice = currentPrice;
+            } else if (currentPrice > nextStep.peakPrice) {
+                nextStep.peakPrice = currentPrice;
+            }
+
+            // Sell immediately on ANY price drop after reaching target
+            const isDropping = currentPrice < nextStep.peakPrice;
 
             if (isDropping) {
                 // Calculate crypto amount to sell for this step
@@ -1418,6 +1565,10 @@ async function startTradingWithConfig(config) {
                 batch.remainingCrypto -= cryptoToSell;
                 batch.remainingPercent -= nextStep.percentage;
 
+                // V2.0 Phase 3: Accumulate EUR received for profit tracking
+                if (!batch.totalEurReceived) batch.totalEurReceived = 0;
+                batch.totalEurReceived += eurReceived;
+
                 // Log the sale
                 console.log(`[${asset.market}] Batch ${batch.batchId} - Step ${nextStep.stepId}: Sold ${nextStep.percentage}% at €${currentPrice} (+${profitPercent.toFixed(2)}%)`);
 
@@ -1436,6 +1587,9 @@ async function startTradingWithConfig(config) {
                 if (batch.remainingPercent <= 0 || batch.remainingCrypto < 0.00000001) {
                     batch.status = "completed";
                     console.log(`[${asset.market}] Batch ${batch.batchId} completed all steps`);
+
+                    // V2.0 Phase 3: Record batch profit for next buy amount calculation
+                    recordBatchProfit(asset, batch, batch.totalEurReceived);
 
                     io.emit('batch-completed', {
                         market: asset.market,
@@ -1510,6 +1664,11 @@ async function startTradingWithConfig(config) {
             batch.remainingPercent = 0;
             batch.status = "completed";
 
+            // V2.0 Phase 3: Record traditional sell profit
+            if (!batch.totalEurReceived) batch.totalEurReceived = 0;
+            batch.totalEurReceived += eurReceived;
+            recordBatchProfit(asset, batch, batch.totalEurReceived);
+
             log(asset.market, states.SELL, reason, currentPrice, batch.buyPrice);
 
             io.emit('batch-completed', {
@@ -1572,6 +1731,9 @@ async function startTradingWithConfig(config) {
     }
 
     // Manual trading handlers - now accept market parameter
+    // ============================================================
+    // V2.0 PHASE 2B: MANUAL TRADING HANDLERS (Updated for Batch System)
+    // ============================================================
     manualBuyHandler = async (market) => {
         const asset = assets.find(a => a.market === market);
         if (!asset) {
@@ -1581,17 +1743,19 @@ async function startTradingWithConfig(config) {
 
         if (asset.currentState === states.BUY && asset.latestPrice !== null) {
             console.log(`[${market}] Manual BUY triggered`);
-            asset.buyPrice = asset.latestPrice;
-            io.emit('buy-price', { market, price: asset.buyPrice });
+            // V2.0: buy() now creates a batch automatically
             await buy(asset, 'Manual Buy', asset.latestPrice);
             asset.currentState = states.SELL;
-            // Reset maxPrice to 0, will track from next price update
-            asset.maxPrice = 0;
-            io.emit('max-price', { market, price: 0 });
+
+            // Emit buy-price and max-price events for frontend display
+            io.emit('buy-price', { market, price: asset.latestPrice });
+            io.emit('max-price', { market, price: asset.latestPrice });
+
             // Emit check event for table with buy amount
             const eventIndex = asset.tradeIndex++;
             const eventTime = new Date().toISOString();
-            io.emit('check', { market, amount: buyAmount, price: asset.latestPrice, reason: 'Manual Buy', action: 'buy', wallet, eventIndex, eventTime });
+            // V2.0 Phase 2C: Include batches in manual buy event
+            io.emit('check', { market, amount: buyAmount, price: asset.latestPrice, reason: 'Manual Buy', action: 'buy', wallet, eventIndex, eventTime, batches: asset.batches || [] });
         } else {
             console.log(`[${market}] Manual BUY ignored - already in SELL state or no price available`);
         }
@@ -1604,22 +1768,47 @@ async function startTradingWithConfig(config) {
             return;
         }
 
-        if (asset.currentState === states.SELL && asset.latestPrice !== null && asset.buyPrice > 0) {
+        if (asset.currentState === states.SELL && asset.latestPrice !== null) {
             console.log(`[${market}] Manual SELL triggered`);
-            // Calculate profit before selling
-            const profit = asset.cryptoAmount * asset.latestPrice;
-            await sell(asset, 'Manual Sell', asset.latestPrice, asset.buyPrice);
-            asset.maxPrice = 0;
+
+            // V2.0: Sell all remaining crypto across all batches
+            let totalEurReceived = 0;
+            if (asset.batches && asset.batches.length > 0) {
+                for (const batch of asset.batches) {
+                    if (batch.remainingCrypto > 0) {
+                        const eurReceived = await executeSell(asset, batch.remainingCrypto, asset.latestPrice);
+                        totalEurReceived += eurReceived;
+                        batch.status = "completed";
+
+                        // V2.0 Phase 3: Record manual sell profit
+                        if (!batch.totalEurReceived) batch.totalEurReceived = 0;
+                        batch.totalEurReceived += eurReceived;
+                        recordBatchProfit(asset, batch, batch.totalEurReceived);
+
+                        console.log(`[${market}] Manually sold batch ${batch.batchId}: €${eurReceived.toFixed(2)}`);
+                    }
+                }
+            }
+
+            // Clear all batches
+            asset.batches = [];
+            asset.currentState = states.BUY;
             asset.buyPrice = 0;
+            asset.maxPrice = 0;
+            asset.cryptoAmount = 0;
+
             io.emit('buy-price', { market, price: '-' });
             io.emit('max-price', { market, price: '-' });
-            asset.currentState = states.BUY;
-            // Emit check event for table with profit amount
+
+            // Emit check event for table with total profit amount
             const eventIndex = asset.tradeIndex++;
             const eventTime = new Date().toISOString();
-            io.emit('check', { market, amount: profit, price: asset.latestPrice, reason: 'Manual Sell', action: 'sell', wallet, eventIndex, eventTime });
+            // V2.0 Phase 2C: Include batches (will be empty after sell) in manual sell event
+            io.emit('check', { market, amount: totalEurReceived, price: asset.latestPrice, reason: 'Manual Sell', action: 'sell', wallet, eventIndex, eventTime, batches: asset.batches || [] });
+
+            console.log(`[${market}] Manual sell complete: Total received €${totalEurReceived.toFixed(2)}`);
         } else {
-            console.log(`[${market}] Manual SELL ignored - not in SELL state, no price available, or no buy price set`);
+            console.log(`[${market}] Manual SELL ignored - not in SELL state or no price available`);
         }
     };
 

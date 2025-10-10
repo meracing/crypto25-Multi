@@ -298,6 +298,141 @@
             #main { grid-template-columns: 1fr; }
             canvas { height: 180px !important; }
         }
+
+        /* ============================================ */
+        /* V2.0 Phase 2C - Batch Display Styling */
+        /* ============================================ */
+        .batch-card {
+            background: linear-gradient(135deg, rgba(79, 172, 254, 0.05) 0%, rgba(0, 242, 254, 0.05) 100%);
+            border: 1px solid rgba(79, 172, 254, 0.3);
+            border-radius: 8px;
+            padding: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .batch-card:hover {
+            border-color: rgba(79, 172, 254, 0.5);
+            box-shadow: 0 4px 16px rgba(79, 172, 254, 0.2);
+        }
+
+        .batch-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(79, 172, 254, 0.2);
+        }
+
+        .batch-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: #4facfe;
+        }
+
+        .batch-profit {
+            font-size: 0.85rem;
+            font-weight: 700;
+            padding: 4px 10px;
+            border-radius: 6px;
+        }
+
+        .batch-profit.positive {
+            background: rgba(67, 233, 123, 0.2);
+            color: #43e97b;
+        }
+
+        .batch-profit.negative {
+            background: rgba(250, 112, 154, 0.2);
+            color: #fa709a;
+        }
+
+        .batch-profit.neutral {
+            background: rgba(79, 172, 254, 0.2);
+            color: #4facfe;
+        }
+
+        .batch-info {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 10px;
+            font-size: 0.85rem;
+        }
+
+        .batch-info-item {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .batch-info-label {
+            color: #9db4d1;
+            font-size: 0.75rem;
+            margin-bottom: 2px;
+        }
+
+        .batch-info-value {
+            color: #e8eaed;
+            font-weight: 600;
+        }
+
+        .batch-steps {
+            margin-top: 10px;
+        }
+
+        .batch-step {
+            margin-bottom: 8px;
+        }
+
+        .batch-step-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 4px;
+            font-size: 0.8rem;
+        }
+
+        .batch-step-label {
+            color: #9db4d1;
+        }
+
+        .batch-step-status {
+            font-weight: 600;
+        }
+
+        .batch-step-status.pending {
+            color: #ffcc00;
+        }
+
+        .batch-step-status.completed {
+            color: #43e97b;
+        }
+
+        .batch-progress-bar {
+            height: 6px;
+            background: rgba(79, 172, 254, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .batch-progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #43e97b 0%, #38f9d7 100%);
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+
+        .batch-progress-fill.pending {
+            background: linear-gradient(90deg, #ffcc00 0%, #ff9900 100%);
+        }
+
+        .batch-no-data {
+            text-align: center;
+            color: #9db4d1;
+            padding: 20px;
+            font-style: italic;
+        }
     </style>
 </head>
 <body>
@@ -342,6 +477,14 @@
                 <div id="max-price"><small>📈 Max Price</small><div>-</div></div>
                 <div id="buy-price"><small>🛒 Buy Price</small><div>-</div></div>
                 <div id="wallet-display"><small>💼 Wallet</small><div id="wallet">-</div></div>
+            </div>
+
+            <!-- Batch Display Panel - V2.0 Phase 2C -->
+            <div class="chart-container" id="batches-container" style="margin-top: 15px; display: none;">
+                <div class="chart-title">📦 Active Batches</div>
+                <div id="batches-display" style="display: flex; flex-direction: column; gap: 12px;">
+                    <!-- Batches will be dynamically inserted here -->
+                </div>
             </div>
 
             <!-- Manual controls OUTSIDE and BELOW stats -->
@@ -677,6 +820,142 @@
         localStorage.setItem('nextColorIndex', nextColorIndex.toString());
 
         return color;
+    }
+
+    // ============================================================
+    // V2.0 Phase 2C - Batch Display Functions
+    // ============================================================
+    function renderBatchDisplay(batchData) {
+        const container = $('batches-container');
+        const display = $('batches-display');
+
+        if (!container || !display) return;
+
+        // batchData structure: { market: string, batches: Array, currentPrice: number }
+        // batches can be from multiple assets
+        const allBatches = [];
+
+        // Collect all batches from all assets
+        selectedMarkets.forEach(market => {
+            if (assetData[market] && assetData[market].batches && assetData[market].batches.length > 0) {
+                const currentPrice = assetData[market].currentPrice || 0;
+                assetData[market].batches.forEach(batch => {
+                    allBatches.push({
+                        market: market,
+                        batch: batch,
+                        currentPrice: currentPrice
+                    });
+                });
+            }
+        });
+
+        // If no batches, hide the container
+        if (allBatches.length === 0) {
+            container.style.display = 'none';
+            return;
+        }
+
+        // Show container and render batches
+        container.style.display = 'block';
+
+        display.innerHTML = allBatches.map((data, idx) => {
+            const { market, batch, currentPrice } = data;
+            const { batchId, buyPrice, buyAmount, remainingCrypto, remainingPercent, sellSteps, stopLoss } = batch;
+
+            // Calculate profit/loss
+            const currentValue = remainingCrypto * currentPrice;
+            const profit = currentValue - (buyAmount * (remainingPercent / 100));
+            const profitPercent = buyAmount > 0 ? (profit / (buyAmount * (remainingPercent / 100))) * 100 : 0;
+
+            const profitClass = profitPercent > 0 ? 'positive' : profitPercent < 0 ? 'negative' : 'neutral';
+            const profitSign = profitPercent > 0 ? '+' : '';
+
+            // Render sell steps if they exist
+            let stepsHtml = '';
+            if (sellSteps && sellSteps.length > 0) {
+                stepsHtml = `
+                    <div class="batch-steps">
+                        ${sellSteps.map((step, stepIdx) => {
+                            const stepCompleted = step.completed;
+                            const stepStatus = stepCompleted ? 'completed' : 'pending';
+
+                            // Calculate progress based on current price vs target
+                            let progressPercent = 0;
+                            let actualProgressPercent = 0; // For display (can go above 100%)
+                            if (!stepCompleted && currentPrice > 0 && buyPrice > 0) {
+                                const currentProfit = ((currentPrice - buyPrice) / buyPrice) * 100;
+                                actualProgressPercent = Math.max(0, (currentProfit / step.priceThreshold) * 100);
+                                // Cap progress bar width at 100%, but show actual % in text
+                                progressPercent = Math.min(100, actualProgressPercent);
+                            } else if (stepCompleted) {
+                                progressPercent = 100;
+                                actualProgressPercent = 100;
+                            }
+
+                            // Show actual progress percentage (can exceed 100%)
+                            const stepStatusText = stepCompleted
+                                ? '✅ Sold'
+                                : `${actualProgressPercent.toFixed(1)}%`;
+
+                            return `
+                                <div class="batch-step">
+                                    <div class="batch-step-header">
+                                        <span class="batch-step-label">Step ${step.stepId}: ${step.percentage}% @ +${step.priceThreshold}%</span>
+                                        <span class="batch-step-status ${stepStatus}">${stepStatusText}</span>
+                                    </div>
+                                    <div class="batch-progress-bar">
+                                        <div class="batch-progress-fill ${stepStatus}" style="width: ${progressPercent}%"></div>
+                                    </div>
+                                    ${stepCompleted ? `<div style="font-size: 0.75rem; color: #43e97b; margin-top: 2px;">Sold at €${step.soldAt?.toFixed(6) || 'N/A'} - ${new Date(step.soldTime).toLocaleTimeString()}</div>` : ''}
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="batch-card">
+                    <div class="batch-header">
+                        <div class="batch-title">${market} - Batch #${idx + 1}</div>
+                        <div class="batch-profit ${profitClass}">${profitSign}${profitPercent.toFixed(2)}% (€${profit.toFixed(2)})</div>
+                    </div>
+                    <div class="batch-info">
+                        <div class="batch-info-item">
+                            <span class="batch-info-label">Buy Price</span>
+                            <span class="batch-info-value">€${buyPrice.toFixed(6)}</span>
+                        </div>
+                        <div class="batch-info-item">
+                            <span class="batch-info-label">Remaining</span>
+                            <span class="batch-info-value">${remainingCrypto.toFixed(4)} (${remainingPercent}%)</span>
+                        </div>
+                        <div class="batch-info-item">
+                            <span class="batch-info-label">Stop Loss</span>
+                            <span class="batch-info-value">€${stopLoss?.triggerPrice?.toFixed(6) || 'N/A'}</span>
+                        </div>
+                    </div>
+                    ${stepsHtml}
+                </div>
+            `;
+        }).join('');
+    }
+
+    // Store batch data in assetData for each market
+    function updateBatchData(market, batches) {
+        if (!assetData[market]) {
+            assetData[market] = {
+                priceHistory: [],
+                tradeEvents: [],
+                currentPrice: null,
+                buyPrice: '-',
+                maxPrice: '-',
+                lastPrices: [],
+                color: getColorForMarket(market),
+                batches: []
+            };
+        }
+        assetData[market].batches = batches || [];
+        renderBatchDisplay();
     }
 
     socket.on('market-selected', (markets) => {
@@ -1404,7 +1683,7 @@
     socket.on('check', (data) => {
         if (!data || !data.market) return;
 
-        const { market, amount, price, reason, action, wallet, eventIndex, eventTime } = data;
+        const { market, amount, price, reason, action, wallet, eventIndex, eventTime, batches } = data;
 
         // Debug: log check events that might update wallet
         if (wallet !== undefined && wallet !== null && action) {
@@ -1430,6 +1709,11 @@
         // Update current price in assetData
         if (assetData[market]) {
             assetData[market].currentPrice = price;
+        }
+
+        // V2.0 Phase 2C - Update batch data if provided
+        if (batches !== undefined && batches !== null) {
+            updateBatchData(market, batches);
         }
 
         // table update (guard types) - only add if we have an index (buy/sell event)
@@ -1470,6 +1754,31 @@
                 updateChartAnnotations(market);
             }
         }
+    });
+
+    // ============================================================
+    // V2.0 Phase 2C - Real-time Batch Event Handlers
+    // ============================================================
+
+    // Listen for multi-step sell events
+    socket.on('multi-step-sell', (data) => {
+        const { market, batchId, step, percentage, price, profit, eurReceived } = data;
+        console.log(`📦 Multi-step sell: ${market} Batch ${batchId} - Step ${step} (${percentage}%) @ €${price}, Profit: €${profit?.toFixed(2)}`);
+
+        // Update batch display (will be refreshed by next check event)
+        // Show a brief notification or update
+        const notification = `✅ ${market}: Sold ${percentage}% @ €${price.toFixed(6)}`;
+        console.log(notification);
+    });
+
+    // Listen for stop-loss events
+    socket.on('stop-loss', (data) => {
+        const { market, batchId, lossPercent, eurReceived } = data;
+        console.log(`🛑 Stop-loss triggered: ${market} Batch ${batchId} - Loss: ${lossPercent.toFixed(2)}%, Received: €${eurReceived?.toFixed(2)}`);
+
+        // Update batch display (will be refreshed by next check event)
+        const notification = `🛑 ${market}: Stop-loss triggered (${lossPercent.toFixed(2)}%)`;
+        console.log(notification);
     });
 
     // Function to update chart annotations with buy/sell markers for a specific asset

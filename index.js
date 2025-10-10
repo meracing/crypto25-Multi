@@ -986,88 +986,23 @@ async function startTradingWithConfig(config) {
                     asset.maxPrice = 0;
                 }
             } else if (asset.currentState === states.SELL) {
-                // MaxPrice should be at least the buy price, or higher if price increased
-                if (asset.maxPrice === 0) {
-                    asset.maxPrice = Math.max(asset.buyPrice, cp);
-                } else {
-                    asset.maxPrice = cp > asset.maxPrice ? cp : asset.maxPrice;
-                }
-                // Don't emit max-price yet - wait until after we check if we're selling
-                // (will emit at end of function if no sell happens)
+                // V2.0 Phase 2: Use new batch-based sell logic
+                console.log(`[${asset.market}][SELL MODE] Processing ${asset.batches?.length || 0} batch(es) - Current price: ${cp}`);
 
-                // Calculate GROSS value (before fees)
-                const grossValue = (buyAmount / (asset.buyPrice || 1)) * cp;
-                // Calculate NET value (after 0.25% fee) - this is what user actually receives
-                const netValue = grossValue - (grossValue * FEE_RATE);
-                console.log(`[${asset.market}][SELL MODE] Checking sell conditions - Current: ${cp}, Buy: ${asset.buyPrice}, Max: ${asset.maxPrice}, Profit: ${((cp - asset.buyPrice) / asset.buyPrice * 100).toFixed(2)}%`);
+                // Process sell logic for all batches
+                await processSellLogic(asset, cp);
 
-                if (dataLength >= 12) {
-                    const lp = asset.lastPrices;
-                    const safeGet = (i) => (lp[i] !== undefined ? lp[i] : null);
-                    const last = safeGet(dataLength);
-                    const last1 = safeGet(dataLength - 1);
-                    const last2 = safeGet(dataLength - 2);
-
-                    // MINIMUM PROFIT PROTECTION
-                    // With 0.25% fee on BOTH buy and sell, we need roughly +0.5% price increase to break even
-                    // Buy: €50 → Fee €0.125 → Receive €49.875 worth of crypto
-                    // Sell at +0.5%: €50.2493 gross → Fee €0.1256 → Net €50.1237 → Still LOSS!
-                    // Sell at +0.6%: €50.0488 → Net profit of €0.0488 (0.098%)
-                    // Therefore: MIN_PROFIT_MULTIPLIER must be at least 1.006 (+0.6%)
-                    const MIN_PROFIT_MULTIPLIER = 1.006; // +0.6% minimum (covers double fees + small profit)
-
-                    if (cp >= (asset.buyPrice * 1.006)) {
-                        // PROFIT-TAKING: Only when at +0.6% profit or better
-                        if (last !== null && cp < (last * 1.0003)) {
-                            reason = `Price drop -0.3% (€${netValue.toFixed(2)})`;
-                        } else if (last1 !== null && cp < (last1 * 1.0004)) {
-                            reason = `Price drop -0.4% vs 2nd last (€${netValue.toFixed(2)})`;
-                        } else if (last2 !== null && cp < (last2 * 1.0005)) {
-                            reason = `Price drop -0.5% vs 3rd last (€${netValue.toFixed(2)})`;
-                        } else if (asset.maxPrice >= cp * 1.0006) {
-                            reason = `Drop from peak -0.6% (€${netValue.toFixed(2)})`;
-                        }
-                    } else if (asset.maxPrice >= (asset.buyPrice * 1.012) && (asset.maxPrice >= (cp * 1.006)) && last !== null && last > cp) {
-                        // PEAK PROTECTION: Only sell if we still have minimum profit
-                        if (cp >= (asset.buyPrice * MIN_PROFIT_MULTIPLIER)) {
-                            reason = `Peak was +1.2%, now -0.6% (€${netValue.toFixed(2)})`;
-                        }
-                        // If cp < MIN_PROFIT, don't sell - wait for recovery or stop-loss
-                    } else if (asset.buyPrice >= cp * 1.15) {
-                        // STOP LOSS: -15% - this is intentional, accept the loss
-                        reason = `STOP LOSS -15% (€${netValue.toFixed(2)})`;
-                    } else if (asset.waitIndex >= MAX_WAIT_INDEX) {
-                        // WAIT TIMEOUT: Only sell if we have minimum profit
-                        if (cp >= (asset.buyPrice * MIN_PROFIT_MULTIPLIER)) {
-                            reason = `Wait limit reached (€${netValue.toFixed(2)})`;
-                            asset.waitIndex = 0;
-                        } else {
-                            // If no profit yet, don't sell - keep waiting or hit stop-loss eventually
-                            console.log(`[${asset.market}] Wait limit reached but price too low (${cp} < ${(asset.buyPrice * MIN_PROFIT_MULTIPLIER).toFixed(6)}), continuing to wait`);
-                            asset.waitIndex = 0; // Reset counter, give it another chance
-                        }
-                    } else {
-                        if (cp >= (asset.buyPrice * 1.0051) && cp <= (asset.buyPrice * 1.009)) {
-                            asset.waitIndex++;
-                        } else {
-                            asset.waitIndex = 0;
-                        }
-                    }
-                }
-
-                if (reason !== null) {
-                    asset.sellMoment = asset.stepIndex;
-                    const sellAmount = await sell(asset, reason, cp, asset.buyPrice);
-
-                    asset.maxPrice = 0;
-                    asset.buyPrice = 0;
+                // Check if all batches completed → return to BUY state
+                if (!asset.batches || asset.batches.length === 0) {
                     newState = states.BUY;
-                    // Update state IMMEDIATELY before emitting to prevent race conditions
                     asset.currentState = newState;
-                    // Now emit the cleared prices (after state change)
+                    asset.buyPrice = 0;
+                    asset.maxPrice = 0;
+                    asset.cryptoAmount = 0;
+
                     io.emit('buy-price', { market: asset.market, price: '-' });
                     io.emit('max-price', { market: asset.market, price: '-' });
-                    sellAmountReceived = sellAmount; // Store the actual amount received
+                    console.log(`[${asset.market}] All batches completed, returning to BUY mode`);
                 }
             }
 
@@ -1337,6 +1272,294 @@ async function startTradingWithConfig(config) {
         }
         log(asset.market, states.SELL, reason, cp, bp);
         return sellAmount;
+    }
+
+    // ============================================================
+    // V2.0 PHASE 2: NEW SELL FUNCTIONS FOR BATCH SYSTEM
+    // ============================================================
+
+    /**
+     * Executes a sell order for a specific amount of crypto
+     * @param {Object} asset - The asset object
+     * @param {number} cryptoAmount - Amount of crypto to sell
+     * @param {number} currentPrice - Current price
+     * @returns {number} EUR received from sale (after fees)
+     */
+    async function executeSell(asset, cryptoAmount, currentPrice) {
+        let eurReceived = 0;
+
+        if (tradingMode === 'real') {
+            try {
+                console.log(`[${asset.market}] 🔄 Executing REAL SELL: ${cryptoAmount.toFixed(8)} crypto at €${currentPrice}`);
+                const order = await withRetry(() =>
+                    client.placeOrder(asset.market, 'sell', 'market', 0, {
+                        amount: cryptoAmount.toString()
+                    }),
+                    { retries: 3, initialDelay: 500 }
+                );
+                eurReceived = parseFloat(order.filledAmountQuote || 0);
+
+                const balanceData = await withRetry(() => client.balance({ symbol: 'EUR' }), { retries: 3, initialDelay: 500 });
+                wallet = parseFloat(balanceData[0].available);
+                currentWallet = wallet;
+                io.emit('wallet', wallet);
+
+                console.log(`[${asset.market}] ✅ Real SELL executed: Received €${eurReceived.toFixed(2)}, New balance: €${wallet.toFixed(2)}`);
+            } catch (err) {
+                console.error(`[${asset.market}] ❌ Real sell failed:`, err);
+                return 0;
+            }
+        } else {
+            // Test mode: Simulate sell with fees
+            const grossValue = cryptoAmount * currentPrice;
+            const fee = grossValue * FEE_RATE;
+            eurReceived = grossValue - fee;
+            wallet += eurReceived;
+            currentWallet = wallet;
+            io.emit('wallet', wallet);
+
+            console.log(`[${asset.market}] Test SELL: ${cryptoAmount.toFixed(8)} crypto = €${grossValue.toFixed(4)} (fee: €${fee.toFixed(4)}), received €${eurReceived.toFixed(4)}`);
+        }
+
+        return eurReceived;
+    }
+
+    /**
+     * Checks and executes stop-loss for a batch
+     * @param {Object} asset - The asset object
+     * @param {Object} batch - The batch to check
+     * @param {number} currentPrice - Current price
+     */
+    async function checkStopLoss(asset, batch, currentPrice) {
+        if (!batch.stopLoss || !batch.stopLoss.enabled) return;
+
+        const lossPercent = ((currentPrice - batch.buyPrice) / batch.buyPrice) * 100;
+
+        if (lossPercent <= -batch.stopLoss.percentage) {
+            console.log(`[${asset.market}] 🛑 STOP LOSS triggered for batch ${batch.batchId}: ${lossPercent.toFixed(2)}%`);
+
+            // Sell remaining crypto in this batch
+            if (batch.remainingCrypto > 0) {
+                const eurReceived = await executeSell(asset, batch.remainingCrypto, currentPrice);
+
+                // Mark all steps as completed
+                if (batch.sellSteps) {
+                    batch.sellSteps.forEach(step => {
+                        if (!step.completed) {
+                            step.completed = true;
+                            step.soldAt = currentPrice;
+                            step.soldTime = new Date().toISOString();
+                        }
+                    });
+                }
+
+                batch.remainingCrypto = 0;
+                batch.remainingPercent = 0;
+                batch.status = "completed";
+
+                io.emit('stop-loss', {
+                    market: asset.market,
+                    batchId: batch.batchId,
+                    lossPercent: lossPercent,
+                    eurReceived: eurReceived
+                });
+
+                console.log(`[${asset.market}] Batch ${batch.batchId} stop-loss complete: Received €${eurReceived.toFixed(2)}`);
+            }
+        }
+    }
+
+    /**
+     * Processes multi-step selling for a batch
+     * @param {Object} asset - The asset object
+     * @param {Object} batch - The batch to process
+     * @param {number} currentPrice - Current price
+     */
+    async function processMultiStepSell(asset, batch, currentPrice) {
+        // Find next uncompleted step
+        const nextStep = batch.sellSteps.find(s => !s.completed);
+        if (!nextStep) {
+            batch.status = "completed";
+            return;
+        }
+
+        // Check if price reached target
+        const profitPercent = ((currentPrice - batch.buyPrice) / batch.buyPrice) * 100;
+
+        if (profitPercent >= nextStep.priceThreshold) {
+            // Price reached target, check if it's dropping (sell trigger)
+            const isDropping = checkPriceDropPattern(asset.lastPrices, currentPrice);
+
+            if (isDropping) {
+                // Calculate crypto amount to sell for this step
+                const cryptoToSell = (batch.remainingCrypto * nextStep.percentage) / batch.remainingPercent;
+
+                // Validate minimum trade amount (€5 after fees)
+                const estimatedValue = cryptoToSell * currentPrice;
+                const netValue = estimatedValue * (1 - FEE_RATE);
+
+                if (netValue < 5) {
+                    console.log(`[${asset.market}] Step ${nextStep.stepId} skipped: amount €${netValue.toFixed(2)} below €5 minimum`);
+                    nextStep.completed = true; // Skip this step
+                    return;
+                }
+
+                // Execute sell via Bitvavo API
+                const eurReceived = await executeSell(asset, cryptoToSell, currentPrice);
+
+                // Update step
+                nextStep.completed = true;
+                nextStep.soldAt = currentPrice;
+                nextStep.soldTime = new Date().toISOString();
+                nextStep.amountSold = eurReceived;
+                nextStep.cryptoSold = cryptoToSell;
+
+                // Update batch
+                batch.remainingCrypto -= cryptoToSell;
+                batch.remainingPercent -= nextStep.percentage;
+
+                // Log the sale
+                console.log(`[${asset.market}] Batch ${batch.batchId} - Step ${nextStep.stepId}: Sold ${nextStep.percentage}% at €${currentPrice} (+${profitPercent.toFixed(2)}%)`);
+
+                // Emit event to frontend
+                io.emit('multi-step-sell', {
+                    market: asset.market,
+                    batchId: batch.batchId,
+                    step: nextStep.stepId,
+                    percentage: nextStep.percentage,
+                    price: currentPrice,
+                    profit: profitPercent,
+                    eurReceived: eurReceived
+                });
+
+                // Check if batch is complete
+                if (batch.remainingPercent <= 0 || batch.remainingCrypto < 0.00000001) {
+                    batch.status = "completed";
+                    console.log(`[${asset.market}] Batch ${batch.batchId} completed all steps`);
+
+                    io.emit('batch-completed', {
+                        market: asset.market,
+                        batchId: batch.batchId
+                    });
+                }
+            }
+        }
+    }
+
+    /**
+     * Processes traditional (non-multi-step) selling for a batch
+     * Uses existing sell logic but adapted for batch system
+     * @param {Object} asset - The asset object
+     * @param {Object} batch - The batch to process
+     * @param {number} currentPrice - Current price
+     */
+    async function processTraditionalSell(asset, batch, currentPrice) {
+        // Use existing sell logic pattern
+        const dataLength = asset.lastPrices.length - 1;
+        if (dataLength < 12) return;
+
+        const lp = asset.lastPrices;
+        const safeGet = (i) => (lp[i] !== undefined ? lp[i] : null);
+        const last = safeGet(dataLength);
+        const last1 = safeGet(dataLength - 1);
+        const last2 = safeGet(dataLength - 2);
+
+        let reason = null;
+
+        // MINIMUM PROFIT PROTECTION
+        const MIN_PROFIT_MULTIPLIER = 1.006; // +0.6% minimum (covers double fees + small profit)
+
+        if (currentPrice >= (batch.buyPrice * MIN_PROFIT_MULTIPLIER)) {
+            // PROFIT-TAKING: Only when at +0.6% profit or better
+            if (last !== null && currentPrice < (last * 0.9997)) {
+                reason = `Price drop -0.3%`;
+            } else if (last1 !== null && currentPrice < (last1 * 0.9996)) {
+                reason = `Price drop -0.4% vs 2nd last`;
+            } else if (last2 !== null && currentPrice < (last2 * 0.9995)) {
+                reason = `Price drop -0.5% vs 3rd last`;
+            } else if (batch.maxPrice >= currentPrice * 1.0006) {
+                reason = `Drop from peak -0.6%`;
+            }
+        } else if (batch.maxPrice >= (batch.buyPrice * 1.012) && (batch.maxPrice >= (currentPrice * 1.006)) && last !== null && last > currentPrice) {
+            // PEAK PROTECTION: Only sell if we still have minimum profit
+            if (currentPrice >= (batch.buyPrice * MIN_PROFIT_MULTIPLIER)) {
+                reason = `Peak was +1.2%, now -0.6%`;
+            }
+        } else if (batch.waitIndex >= MAX_WAIT_INDEX) {
+            // WAIT TIMEOUT: Only sell if we have minimum profit
+            if (currentPrice >= (batch.buyPrice * MIN_PROFIT_MULTIPLIER)) {
+                reason = `Wait limit reached`;
+                batch.waitIndex = 0;
+            } else {
+                console.log(`[${asset.market}] Wait limit reached but price too low, continuing to wait`);
+                batch.waitIndex = 0; // Reset counter
+            }
+        } else {
+            if (currentPrice >= (batch.buyPrice * 1.0051) && currentPrice <= (batch.buyPrice * 1.009)) {
+                batch.waitIndex++;
+            } else {
+                batch.waitIndex = 0;
+            }
+        }
+
+        // Execute sell if reason found
+        if (reason !== null) {
+            const eurReceived = await executeSell(asset, batch.remainingCrypto, currentPrice);
+
+            batch.remainingCrypto = 0;
+            batch.remainingPercent = 0;
+            batch.status = "completed";
+
+            log(asset.market, states.SELL, reason, currentPrice, batch.buyPrice);
+
+            io.emit('batch-completed', {
+                market: asset.market,
+                batchId: batch.batchId,
+                reason: reason,
+                eurReceived: eurReceived
+            });
+        }
+    }
+
+    /**
+     * Main sell logic processor - handles all batches for an asset
+     * @param {Object} asset - The asset object
+     * @param {number} currentPrice - Current price
+     */
+    async function processSellLogic(asset, currentPrice) {
+        if (!asset.batches || asset.batches.length === 0) {
+            return; // No active batches
+        }
+
+        // Process each active batch independently
+        for (const batch of asset.batches) {
+            if (batch.status !== "active") continue;
+
+            // Update batch maxPrice
+            if (currentPrice > batch.maxPrice) {
+                batch.maxPrice = currentPrice;
+            }
+
+            // Check if multi-step or traditional selling
+            if (batch.sellSteps) {
+                await processMultiStepSell(asset, batch, currentPrice);
+            } else {
+                await processTraditionalSell(asset, batch, currentPrice);
+            }
+
+            // Check stop-loss (applies to all batches)
+            await checkStopLoss(asset, batch, currentPrice);
+        }
+
+        // Clean up completed batches
+        asset.batches = asset.batches.filter(b => b.status === "active");
+
+        // Update legacy fields
+        asset.cryptoAmount = calculateTotalCrypto(asset.batches);
+        if (asset.batches.length > 0) {
+            asset.buyPrice = asset.batches[0].buyPrice; // Reference to first batch
+            asset.maxPrice = Math.max(...asset.batches.map(b => b.maxPrice));
+        }
     }
 
     function log(market, state, message, cp, bp) {

@@ -1139,6 +1139,13 @@
             });
         });
 
+        // Buy amount change handler - re-validate multi-step if enabled
+        document.getElementById('buy-amount').addEventListener('input', () => {
+            if (multiStepEnabled) {
+                validateMultiStep();
+            }
+        });
+
         // Mode selection
         document.querySelectorAll('.mode-btn').forEach(btn => {
             btn.addEventListener('click', () => {

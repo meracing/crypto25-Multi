@@ -152,6 +152,124 @@
             box-shadow: 0 4px 16px rgba(0, 217, 255, 0.4);
         }
 
+        /* V2.0 Trading Options Styles */
+        .trading-options-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 35px;
+        }
+
+        .options-section {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid rgba(0, 217, 255, 0.2);
+        }
+
+        .options-section-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: #00d9ff;
+            margin-bottom: 15px;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .strategy-dropdown {
+            width: 100%;
+            padding: 14px;
+            background: #1a1a2e;
+            border: 2px solid rgba(0, 217, 255, 0.3);
+            border-radius: 8px;
+            color: #00f5ff;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-bottom: 12px;
+        }
+
+        .strategy-dropdown:hover {
+            border-color: #00d9ff;
+        }
+
+        .strategy-dropdown:focus {
+            outline: none;
+            border-color: #00f5ff;
+            box-shadow: 0 0 0 3px rgba(0, 245, 255, 0.1);
+        }
+
+        .strategy-dropdown option {
+            background: #1a1a2e;
+            color: #00f5ff;
+            padding: 10px;
+        }
+
+        .strategy-dropdown option:disabled {
+            color: #666;
+        }
+
+        .strategy-info {
+            font-size: 0.82rem;
+            color: #888;
+            line-height: 1.5;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+            border-left: 3px solid #00d9ff;
+        }
+
+        .tooltip-icon {
+            display: inline-block;
+            width: 18px;
+            height: 18px;
+            background: rgba(0, 217, 255, 0.2);
+            border-radius: 50%;
+            text-align: center;
+            line-height: 18px;
+            font-size: 0.75rem;
+            cursor: help;
+            position: relative;
+        }
+
+        .tooltip-icon:hover::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #0f0f23;
+            color: #00f5ff;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            z-index: 1000;
+            border: 1px solid #00d9ff;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+        }
+
+        .coming-soon-badge {
+            display: inline-block;
+            background: rgba(255, 153, 0, 0.2);
+            color: #ffaa00;
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            margin-left: 8px;
+        }
+
+        @media (max-width: 768px) {
+            .trading-options-container {
+                grid-template-columns: 1fr;
+            }
+        }
+
         .input-group {
             margin-bottom: 25px;
         }
@@ -336,11 +454,40 @@
             <div class="info-text" id="selected-count">0 assets selected</div>
         </div>
 
-        <div class="section">
-            <div class="section-title">⏱️ Trading Interval</div>
-            <div class="interval-buttons">
-                <button class="interval-btn selected" data-interval="10">10 Seconds</button>
-                <button class="interval-btn" data-interval="15">15 Seconds</button>
+        <!-- V2.0 Trading Options Structure -->
+        <div class="trading-options-container">
+            <!-- BUY OPTIONS Section -->
+            <div class="options-section">
+                <div class="options-section-title">
+                    📈 Buy Strategy
+                    <span class="tooltip-icon" data-tooltip="Choose when to buy assets">?</span>
+                </div>
+                <select class="strategy-dropdown" id="buy-strategy">
+                    <option value="interval-10" selected>Price Comparison - 10 Seconds</option>
+                    <option value="interval-15">Price Comparison - 15 Seconds</option>
+                    <option value="volatility" disabled>Market Volatility Adaptation 🔒</option>
+                    <option value="volume" disabled>Volume Confirmation 🔒</option>
+                    <option value="kelly" disabled>Position Sizing (Kelly Criterion) 🔒</option>
+                </select>
+                <div class="strategy-info" id="buy-info">
+                    Compares current price with price from 10 seconds ago. Buys when current price is lower.
+                </div>
+            </div>
+
+            <!-- SELL OPTIONS Section -->
+            <div class="options-section">
+                <div class="options-section-title">
+                    📉 Sell Strategy
+                    <span class="tooltip-icon" data-tooltip="Choose when to sell assets">?</span>
+                </div>
+                <select class="strategy-dropdown" id="sell-strategy">
+                    <option value="interval-10" selected>Price Comparison - 10 Seconds</option>
+                    <option value="interval-15">Price Comparison - 15 Seconds</option>
+                    <option value="multi-step" disabled>Multi-Step Selling Strategy 🔒</option>
+                </select>
+                <div class="strategy-info" id="sell-info">
+                    Compares current price with price from 10 seconds ago. Sells when current price is higher than buy price + profit margin.
+                </div>
             </div>
         </div>
 
@@ -381,13 +528,30 @@
 
         const socket = io();
         let selectedAssets = [];
-        let selectedInterval = 10;
+        let selectedInterval = 10; // Legacy support - derived from buy strategy
+        let selectedBuyStrategy = 'interval-10';
+        let selectedSellStrategy = 'interval-10';
         let selectedMode = 'test';
         let availableMarkets = [];
         let lockedAssets = []; // Assets with active positions (cannot be unselected)
         let preservedWallet = null;
         let preservedPositions = [];
         let modeLocked = false; // Trading mode locked when resuming with positions
+
+        // Strategy descriptions for dynamic info updates
+        const buyStrategyDescriptions = {
+            'interval-10': 'Compares current price with price from 10 seconds ago. Buys when current price is lower.',
+            'interval-15': 'Compares current price with price from 15 seconds ago. Buys when current price is lower.',
+            'volatility': 'Adjusts buy amounts based on market volatility. Lower volatility = larger positions. (Coming in V2.1)',
+            'volume': 'Confirms buy signals with trading volume analysis. Only buys when volume supports the move. (Coming in V2.1)',
+            'kelly': 'Uses Kelly Criterion to calculate optimal position sizes based on win rate and odds. (Coming in V2.1)'
+        };
+
+        const sellStrategyDescriptions = {
+            'interval-10': 'Compares current price with price from 10 seconds ago. Sells when current price is higher than buy price + profit margin.',
+            'interval-15': 'Compares current price with price from 15 seconds ago. Sells when current price is higher than buy price + profit margin.',
+            'multi-step': 'Sells in multiple steps at different profit levels (2-4 steps). Maximizes profit while reducing risk. (Coming in V2.1)'
+        };
 
         // Check if we're resuming from active trading
         const urlParams = new URLSearchParams(window.location.search);
@@ -508,13 +672,29 @@
             btn.disabled = selectedAssets.length === 0;
         }
 
-        // Interval selection
-        document.querySelectorAll('.interval-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.interval-btn').forEach(b => b.classList.remove('selected'));
-                btn.classList.add('selected');
-                selectedInterval = parseInt(btn.dataset.interval);
-            });
+        // ============================================================
+        // V2.0 Strategy Selection Handlers
+        // ============================================================
+
+        // Buy strategy dropdown handler
+        document.getElementById('buy-strategy').addEventListener('change', (e) => {
+            selectedBuyStrategy = e.target.value;
+
+            // Update info text
+            document.getElementById('buy-info').textContent = buyStrategyDescriptions[selectedBuyStrategy];
+
+            // Extract interval for backward compatibility with existing trading logic
+            if (selectedBuyStrategy.startsWith('interval-')) {
+                selectedInterval = parseInt(selectedBuyStrategy.split('-')[1]);
+            }
+        });
+
+        // Sell strategy dropdown handler
+        document.getElementById('sell-strategy').addEventListener('change', (e) => {
+            selectedSellStrategy = e.target.value;
+
+            // Update info text
+            document.getElementById('sell-info').textContent = sellStrategyDescriptions[selectedSellStrategy];
         });
 
         // Mode selection
@@ -558,7 +738,9 @@
             // Send configuration to server
             socket.emit('trading-config', {
                 markets: selectedAssets,
-                interval: selectedInterval,
+                interval: selectedInterval, // Legacy support - for backward compatibility
+                buyStrategy: selectedBuyStrategy, // V2.0 - Buy strategy selection
+                sellStrategy: selectedSellStrategy, // V2.0 - Sell strategy selection
                 buyAmount: buyAmount,
                 tradingMode: selectedMode,
                 preservedWallet: preservedWallet,

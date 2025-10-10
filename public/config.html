@@ -427,6 +427,17 @@
             display: none;
         }
 
+        .info-message {
+            background: rgba(0, 217, 255, 0.15);
+            border: 1px solid #00d9ff;
+            border-radius: 8px;
+            padding: 12px;
+            color: #00f5ff;
+            font-weight: 600;
+            margin-bottom: 20px;
+            display: none;
+        }
+
         .loading {
             text-align: center;
             padding: 40px;
@@ -444,6 +455,7 @@
             <span id="lock-notice-text">⚠️ Trading mode is locked because you have active positions. Click "Start New" below to reset the bot and unlock all options.</span>
         </div>
 
+        <div class="info-message" id="info-message"></div>
         <div class="error-message" id="error-message"></div>
 
         <div class="section">
@@ -683,9 +695,25 @@
             // Update info text
             document.getElementById('buy-info').textContent = buyStrategyDescriptions[selectedBuyStrategy];
 
-            // Extract interval for backward compatibility with existing trading logic
+            // IMPORTANT: Synchronize interval-based strategies
+            // If user selects interval-based buy strategy, sync the sell strategy to same interval
             if (selectedBuyStrategy.startsWith('interval-')) {
                 selectedInterval = parseInt(selectedBuyStrategy.split('-')[1]);
+
+                // Get current sell strategy
+                const sellDropdown = document.getElementById('sell-strategy');
+                const currentSellStrategy = sellDropdown.value;
+
+                // If sell is also using interval-based strategy, sync it to same interval
+                if (currentSellStrategy.startsWith('interval-')) {
+                    const newSellStrategy = `interval-${selectedInterval}`;
+                    sellDropdown.value = newSellStrategy;
+                    selectedSellStrategy = newSellStrategy;
+                    document.getElementById('sell-info').textContent = sellStrategyDescriptions[selectedSellStrategy];
+
+                    // Show brief notification
+                    showInfo(`Sell strategy synchronized to ${selectedInterval} seconds`);
+                }
             }
         });
 
@@ -695,6 +723,28 @@
 
             // Update info text
             document.getElementById('sell-info').textContent = sellStrategyDescriptions[selectedSellStrategy];
+
+            // IMPORTANT: Synchronize interval-based strategies
+            // If user selects interval-based sell strategy, sync the buy strategy to same interval
+            if (selectedSellStrategy.startsWith('interval-')) {
+                const sellInterval = parseInt(selectedSellStrategy.split('-')[1]);
+
+                // Get current buy strategy
+                const buyDropdown = document.getElementById('buy-strategy');
+                const currentBuyStrategy = buyDropdown.value;
+
+                // If buy is also using interval-based strategy, sync it to same interval
+                if (currentBuyStrategy.startsWith('interval-')) {
+                    const newBuyStrategy = `interval-${sellInterval}`;
+                    buyDropdown.value = newBuyStrategy;
+                    selectedBuyStrategy = newBuyStrategy;
+                    selectedInterval = sellInterval;
+                    document.getElementById('buy-info').textContent = buyStrategyDescriptions[selectedBuyStrategy];
+
+                    // Show brief notification
+                    showInfo(`Buy strategy synchronized to ${sellInterval} seconds`);
+                }
+            }
         });
 
         // Mode selection
@@ -831,6 +881,15 @@ Continue?`;
             setTimeout(() => {
                 errorEl.style.display = 'none';
             }, 3000);
+        }
+
+        function showInfo(message) {
+            const infoEl = document.getElementById('info-message');
+            infoEl.textContent = `ℹ️ ${message}`;
+            infoEl.style.display = 'block';
+            setTimeout(() => {
+                infoEl.style.display = 'none';
+            }, 2500);
         }
     </script>
 </body>

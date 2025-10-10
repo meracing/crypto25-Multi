@@ -270,6 +270,175 @@
             }
         }
 
+        /* Multi-Step Selling Configuration Styles */
+        .multi-step-config {
+            background: #16213e;
+            border-radius: 12px;
+            padding: 25px;
+            margin-bottom: 35px;
+            border: 1px solid rgba(0, 217, 255, 0.2);
+        }
+
+        .step-count-selector {
+            margin-bottom: 25px;
+        }
+
+        .step-count-selector label {
+            display: block;
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: #00d9ff;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+        }
+
+        .step-count-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .step-count-btn {
+            flex: 1;
+            padding: 12px;
+            background: #1a1a2e;
+            border: 2px solid rgba(0, 217, 255, 0.3);
+            border-radius: 8px;
+            color: #c0c0c0;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .step-count-btn:hover {
+            border-color: #00d9ff;
+            background: rgba(0, 217, 255, 0.05);
+        }
+
+        .step-count-btn.selected {
+            background: linear-gradient(135deg, #00d9ff 0%, #0099ff 100%);
+            border-color: #00f5ff;
+            color: #0f0f23;
+            box-shadow: 0 4px 16px rgba(0, 217, 255, 0.4);
+        }
+
+        .steps-container {
+            margin-bottom: 25px;
+        }
+
+        .step-item {
+            background: #1a1a2e;
+            border: 1px solid rgba(0, 217, 255, 0.2);
+            border-radius: 8px;
+            padding: 18px;
+            margin-bottom: 15px;
+        }
+
+        .step-header {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #00f5ff;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .step-inputs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .step-input-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .step-input-group label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: #888;
+            margin-bottom: 6px;
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
+        .step-input-group input {
+            padding: 10px;
+            background: #0f0f23;
+            border: 2px solid rgba(0, 217, 255, 0.2);
+            border-radius: 6px;
+            color: #00f5ff;
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+
+        .step-input-group input:focus {
+            outline: none;
+            border-color: #00f5ff;
+            box-shadow: 0 0 0 2px rgba(0, 245, 255, 0.1);
+        }
+
+        .step-input-group input.invalid {
+            border-color: #ff4466;
+        }
+
+        .step-warning {
+            font-size: 0.75rem;
+            color: #ffaa00;
+            margin-top: 8px;
+            display: none;
+        }
+
+        .step-warning.show {
+            display: block;
+        }
+
+        .validation-summary {
+            background: rgba(0, 217, 255, 0.05);
+            border: 1px solid rgba(0, 217, 255, 0.2);
+            border-radius: 8px;
+            padding: 15px;
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+        }
+
+        .validation-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .validation-label {
+            font-size: 0.8rem;
+            color: #888;
+            font-weight: 600;
+        }
+
+        .validation-value {
+            font-size: 1.1rem;
+            color: #00f5ff;
+            font-weight: 700;
+        }
+
+        .validation-value.invalid {
+            color: #ff4466;
+        }
+
+        .validation-icon {
+            font-size: 1.2rem;
+        }
+
+        @media (max-width: 768px) {
+            .step-inputs {
+                grid-template-columns: 1fr;
+            }
+        }
+
         .input-group {
             margin-bottom: 25px;
         }
@@ -495,10 +664,44 @@
                 <select class="strategy-dropdown" id="sell-strategy">
                     <option value="interval-10" selected>Price Comparison - 10 Seconds</option>
                     <option value="interval-15">Price Comparison - 15 Seconds</option>
-                    <option value="multi-step" disabled>Multi-Step Selling Strategy 🔒</option>
+                    <option value="multi-step">Multi-Step Selling Strategy ✨</option>
                 </select>
                 <div class="strategy-info" id="sell-info">
                     Compares current price with price from 10 seconds ago. Sells when current price is higher than buy price + profit margin.
+                </div>
+            </div>
+        </div>
+
+        <!-- Multi-Step Selling Configuration (Hidden by default) -->
+        <div class="multi-step-config" id="multi-step-config" style="display: none;">
+            <div class="section-title">
+                📊 Configure Multi-Step Selling
+                <span class="tooltip-icon" data-tooltip="Sell in multiple steps at different profit levels">?</span>
+            </div>
+
+            <div class="step-count-selector">
+                <label>Number of Steps:</label>
+                <div class="step-count-buttons">
+                    <button class="step-count-btn" data-steps="2">2 Steps</button>
+                    <button class="step-count-btn selected" data-steps="3">3 Steps</button>
+                    <button class="step-count-btn" data-steps="4">4 Steps</button>
+                </div>
+            </div>
+
+            <div class="steps-container" id="steps-container">
+                <!-- Steps will be dynamically generated here -->
+            </div>
+
+            <div class="validation-summary" id="validation-summary">
+                <div class="validation-item">
+                    <span class="validation-label">Total Percentage:</span>
+                    <span class="validation-value" id="total-percentage">100%</span>
+                    <span class="validation-icon" id="percentage-icon">✅</span>
+                </div>
+                <div class="validation-item">
+                    <span class="validation-label">All steps valid:</span>
+                    <span class="validation-value" id="steps-valid">Yes</span>
+                    <span class="validation-icon" id="valid-icon">✅</span>
                 </div>
             </div>
         </div>
@@ -562,8 +765,17 @@
         const sellStrategyDescriptions = {
             'interval-10': 'Compares current price with price from 10 seconds ago. Sells when current price is higher than buy price + profit margin.',
             'interval-15': 'Compares current price with price from 15 seconds ago. Sells when current price is higher than buy price + profit margin.',
-            'multi-step': 'Sells in multiple steps at different profit levels (2-4 steps). Maximizes profit while reducing risk. (Coming in V2.1)'
+            'multi-step': 'Sells in multiple steps at different profit levels (2-4 steps). Maximizes profit while reducing risk.'
         };
+
+        // Multi-step selling configuration
+        let multiStepEnabled = false;
+        let numberOfSteps = 3;
+        let sellSteps = [
+            { percentage: 33, priceThreshold: 1.2 },
+            { percentage: 33, priceThreshold: 2.0 },
+            { percentage: 34, priceThreshold: 4.0 }
+        ];
 
         // Check if we're resuming from active trading
         const urlParams = new URLSearchParams(window.location.search);
@@ -724,6 +936,17 @@
             // Update info text
             document.getElementById('sell-info').textContent = sellStrategyDescriptions[selectedSellStrategy];
 
+            // Show/hide multi-step configuration
+            const multiStepConfig = document.getElementById('multi-step-config');
+            if (selectedSellStrategy === 'multi-step') {
+                multiStepEnabled = true;
+                multiStepConfig.style.display = 'block';
+                renderMultiStepUI();
+            } else {
+                multiStepEnabled = false;
+                multiStepConfig.style.display = 'none';
+            }
+
             // IMPORTANT: Synchronize interval-based strategies
             // If user selects interval-based sell strategy, sync the buy strategy to same interval
             if (selectedSellStrategy.startsWith('interval-')) {
@@ -745,6 +968,175 @@
                     showInfo(`Buy strategy synchronized to ${sellInterval} seconds`);
                 }
             }
+        });
+
+        // ============================================================
+        // Multi-Step Selling Configuration Functions
+        // ============================================================
+
+        function renderMultiStepUI() {
+            const container = document.getElementById('steps-container');
+            container.innerHTML = '';
+
+            for (let i = 0; i < numberOfSteps; i++) {
+                const step = sellSteps[i] || { percentage: 0, priceThreshold: 0 };
+                const stepHtml = `
+                    <div class="step-item">
+                        <div class="step-header">
+                            Step ${i + 1}
+                            <span class="tooltip-icon" data-tooltip="Configure sell amount and profit target">?</span>
+                        </div>
+                        <div class="step-inputs">
+                            <div class="step-input-group">
+                                <label>Sell Percentage (%)</label>
+                                <input type="number"
+                                       class="step-percentage"
+                                       data-step="${i}"
+                                       value="${step.percentage}"
+                                       min="1"
+                                       max="100"
+                                       step="1">
+                            </div>
+                            <div class="step-input-group">
+                                <label>Profit Target (%)</label>
+                                <input type="number"
+                                       class="step-threshold"
+                                       data-step="${i}"
+                                       value="${step.priceThreshold}"
+                                       min="0.1"
+                                       max="100"
+                                       step="0.1">
+                            </div>
+                        </div>
+                        <div class="step-warning" id="warning-${i}"></div>
+                    </div>
+                `;
+                container.innerHTML += stepHtml;
+            }
+
+            // Add event listeners for inputs
+            document.querySelectorAll('.step-percentage, .step-threshold').forEach(input => {
+                input.addEventListener('input', handleStepInput);
+            });
+
+            validateMultiStep();
+        }
+
+        function handleStepInput(e) {
+            const stepIndex = parseInt(e.target.dataset.step);
+            const value = parseFloat(e.target.value) || 0;
+
+            if (e.target.classList.contains('step-percentage')) {
+                sellSteps[stepIndex].percentage = value;
+            } else {
+                sellSteps[stepIndex].priceThreshold = value;
+            }
+
+            validateMultiStep();
+        }
+
+        function validateMultiStep() {
+            const buyAmount = parseFloat(document.getElementById('buy-amount').value) || 50;
+            let totalPercentage = 0;
+            let allValid = true;
+            let previousThreshold = 0;
+
+            for (let i = 0; i < numberOfSteps; i++) {
+                const step = sellSteps[i];
+                totalPercentage += step.percentage;
+
+                const warning = document.getElementById(`warning-${i}`);
+                const percentageInput = document.querySelector(`.step-percentage[data-step="${i}"]`);
+                const thresholdInput = document.querySelector(`.step-threshold[data-step="${i}"]`);
+
+                // Validate percentage
+                if (step.percentage < 1 || step.percentage > 100) {
+                    percentageInput.classList.add('invalid');
+                    allValid = false;
+                } else {
+                    percentageInput.classList.remove('invalid');
+                }
+
+                // Validate threshold ordering
+                if (step.priceThreshold <= previousThreshold) {
+                    thresholdInput.classList.add('invalid');
+                    warning.textContent = `⚠️ Profit target must be higher than Step ${i}'s target (${previousThreshold}%)`;
+                    warning.classList.add('show');
+                    allValid = false;
+                } else {
+                    thresholdInput.classList.remove('invalid');
+                }
+
+                // Validate minimum sell amount (€5 after fees)
+                const sellPercentage = step.percentage / 100;
+                const sellAmount = buyAmount * sellPercentage;
+                const feeRate = 0.0025; // 0.25%
+                const netAmount = sellAmount * (1 - feeRate);
+
+                if (netAmount < 5) {
+                    warning.textContent = `⚠️ Sell amount €${netAmount.toFixed(2)} is below €5 minimum (after fees)`;
+                    warning.classList.add('show');
+                    allValid = false;
+                } else if (step.priceThreshold <= previousThreshold) {
+                    // Warning already set above
+                } else {
+                    warning.classList.remove('show');
+                }
+
+                previousThreshold = step.priceThreshold;
+            }
+
+            // Update validation summary
+            const totalEl = document.getElementById('total-percentage');
+            const percentageIcon = document.getElementById('percentage-icon');
+            const stepsValid = document.getElementById('steps-valid');
+            const validIcon = document.getElementById('valid-icon');
+
+            totalEl.textContent = `${totalPercentage}%`;
+            if (totalPercentage === 100) {
+                totalEl.classList.remove('invalid');
+                percentageIcon.textContent = '✅';
+            } else {
+                totalEl.classList.add('invalid');
+                percentageIcon.textContent = '❌';
+                allValid = false;
+            }
+
+            if (allValid && totalPercentage === 100) {
+                stepsValid.textContent = 'Yes';
+                stepsValid.classList.remove('invalid');
+                validIcon.textContent = '✅';
+            } else {
+                stepsValid.textContent = 'No';
+                stepsValid.classList.add('invalid');
+                validIcon.textContent = '❌';
+            }
+
+            return allValid && totalPercentage === 100;
+        }
+
+        // Step count selector handlers
+        document.querySelectorAll('.step-count-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.step-count-btn').forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+
+                numberOfSteps = parseInt(btn.dataset.steps);
+
+                // Redistribute percentages evenly
+                const basePercentage = Math.floor(100 / numberOfSteps);
+                const remainder = 100 - (basePercentage * numberOfSteps);
+
+                sellSteps = [];
+                for (let i = 0; i < numberOfSteps; i++) {
+                    sellSteps.push({
+                        percentage: basePercentage + (i === numberOfSteps - 1 ? remainder : 0),
+                        priceThreshold: 1.0 + (i + 1) * 0.5 // Default: 1.5%, 2.0%, 2.5%, etc.
+                    });
+                }
+
+                renderMultiStepUI();
+            });
         });
 
         // Mode selection
@@ -785,12 +1177,20 @@
                 }
             }
 
+            // Validate multi-step configuration if enabled
+            if (multiStepEnabled && !validateMultiStep()) {
+                showError('Invalid multi-step configuration. Please check your settings.');
+                return;
+            }
+
             // Send configuration to server
             socket.emit('trading-config', {
                 markets: selectedAssets,
                 interval: selectedInterval, // Legacy support - for backward compatibility
                 buyStrategy: selectedBuyStrategy, // V2.0 - Buy strategy selection
                 sellStrategy: selectedSellStrategy, // V2.0 - Sell strategy selection
+                multiStepEnabled: multiStepEnabled, // V2.0 Phase 2 - Multi-step selling
+                sellSteps: multiStepEnabled ? sellSteps : null, // V2.0 Phase 2 - Step configuration
                 buyAmount: buyAmount,
                 tradingMode: selectedMode,
                 preservedWallet: preservedWallet,

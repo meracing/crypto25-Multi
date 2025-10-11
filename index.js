@@ -1797,7 +1797,10 @@ async function startTradingWithConfig(config) {
                 // Log the sale
                 console.log(`[${asset.market}] Batch ${batch.batchId} - Step ${nextStep.stepId}: Sold ${nextStep.percentage}% at €${currentPrice} (+${profitPercent.toFixed(2)}%)`);
 
-                // Emit event to frontend
+                // Emit event to frontend with trade event
+                const eventIndex = asset.tradeIndex++;
+                const eventTime = new Date().toISOString();
+
                 io.emit('multi-step-sell', {
                     market: asset.market,
                     batchId: batch.batchId,
@@ -1806,6 +1809,22 @@ async function startTradingWithConfig(config) {
                     price: currentPrice,
                     profit: profitPercent,
                     eurReceived: eurReceived
+                });
+
+                // V2.0 Phase 5C FIX: Emit check event for transaction history
+                io.emit('check', {
+                    market: asset.market,
+                    amount: eurReceived,
+                    price: currentPrice,
+                    reason: `Multi-step sell ${nextStep.percentage}% @ +${profitPercent.toFixed(2)}%`,
+                    action: 'sell',
+                    wallet,
+                    eventIndex,
+                    eventTime,
+                    batches: asset.batches || [],
+                    totalProfit: asset.totalProfit || 0,
+                    totalInvested: asset.totalInvested || 0,
+                    totalTrades: asset.totalTrades || 0
                 });
 
                 // Check if batch is complete
@@ -1820,6 +1839,26 @@ async function startTradingWithConfig(config) {
                         market: asset.market,
                         batchId: batch.batchId
                     });
+
+                    // V2.0 Phase 5C FIX: Auto-rebuy after batch complete
+                    // Trigger immediate buy if wallet has funds
+                    if (wallet >= tradingConfig.investmentStrategy.baseAmount) {
+                        console.log(`[${asset.market}] Triggering auto-rebuy after batch completion (€${wallet.toFixed(2)} available)`);
+                        await buy(asset, `Auto-rebuy after batch ${batch.batchId}`, currentPrice);
+                    } else {
+                        console.log(`[${asset.market}] Insufficient funds for auto-rebuy (need €${tradingConfig.investmentStrategy.baseAmount}, have €${wallet.toFixed(2)})`);
+                    }
+                } else {
+                    // V2.0 Phase 5C FIX: Auto-rebuy after PARTIAL sell (batch still active)
+                    // This creates concurrent batches for the same asset
+                    console.log(`[${asset.market}] Partial sell complete, batch ${batch.batchId} still active with ${batch.remainingPercent}%`);
+
+                    if (wallet >= tradingConfig.investmentStrategy.baseAmount) {
+                        console.log(`[${asset.market}] Triggering auto-rebuy for concurrent batch (€${wallet.toFixed(2)} available)`);
+                        await buy(asset, `Auto-rebuy after partial sell (step ${nextStep.stepId})`, currentPrice);
+                    } else {
+                        console.log(`[${asset.market}] Insufficient funds for auto-rebuy (need €${tradingConfig.investmentStrategy.baseAmount}, have €${wallet.toFixed(2)})`);
+                    }
                 }
             }
         }

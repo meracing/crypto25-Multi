@@ -528,6 +528,19 @@
                     <select id="manual-asset-select" style="padding: 12px 16px; font-size: 1rem; border-radius: 10px; border: 2px solid #4facfe; background: rgba(30, 36, 58, 0.8); color: #4facfe; cursor: pointer; font-weight: 600;">
                         <option value="">Select Asset...</option>
                     </select>
+
+                    <!-- V2.0 Phase 4: Custom amount input -->
+                    <div style="display: flex; flex-direction: column; gap: 6px;">
+                        <label style="font-size: 0.85rem; color: #9db4d1;">Amount (EUR):</label>
+                        <div style="position: relative;">
+                            <input type="number" id="manual-amount-input"
+                                   min="5" step="1" placeholder="Enter amount (min €5)"
+                                   style="width: 100%; padding: 12px 16px; padding-right: 45px; font-size: 1rem; border-radius: 10px; border: 2px solid #4facfe; background: rgba(30, 36, 58, 0.8); color: #e8eaed; font-weight: 600;">
+                            <span style="position: absolute; right: 16px; top: 50%; transform: translateY(-50%); color: #9db4d1; font-size: 0.95rem; font-weight: 600;">EUR</span>
+                        </div>
+                        <small id="manual-amount-validation" style="font-size: 0.75rem; color: #7b8fa1; min-height: 18px;"></small>
+                    </div>
+
                     <div style="display: flex; gap: 12px;">
                         <button id="manual-buy-btn" style="flex: 1; padding: 16px; font-size: 1rem; font-weight: 700; background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%); color: #0f1419; border: none; border-radius: 10px; cursor: pointer; letter-spacing: 0.5px;">
                             🛒 Manual BUY
@@ -2016,10 +2029,38 @@
         return Number(perc).toFixed(4);
     };
 
-    // Manual BUY and SELL button handlers
+    // V2.0 Phase 4 - Manual Controls with Custom Amount
+    // ============================================================
     const manualBuyBtn = $('manual-buy-btn');
     const manualSellBtn = $('manual-sell-btn');
     const assetSelect = $('manual-asset-select');
+    const manualAmountInput = $('manual-amount-input');
+    const manualAmountValidation = $('manual-amount-validation');
+
+    // Real-time amount validation
+    if (manualAmountInput) {
+        manualAmountInput.addEventListener('input', () => {
+            const amount = parseFloat(manualAmountInput.value) || 0;
+            const FEE_RATE = 0.0025;
+            const netAmount = amount * (1 - FEE_RATE);
+            const walletEl = $('wallet');
+            const currentWallet = walletEl ? parseFloat(walletEl.innerText.replace('€', '').replace(',', '')) || 0 : 0;
+
+            if (amount === 0) {
+                manualAmountValidation.textContent = '';
+                manualAmountValidation.style.color = '#7b8fa1';
+            } else if (netAmount < 5) {
+                manualAmountValidation.textContent = `⚠️ Net amount after fees (€${netAmount.toFixed(2)}) must be ≥ €5. Minimum required: €${(5 / (1 - FEE_RATE)).toFixed(2)}`;
+                manualAmountValidation.style.color = '#fa709a';
+            } else if (amount > currentWallet) {
+                manualAmountValidation.textContent = `⚠️ Amount exceeds wallet balance (€${currentWallet.toFixed(2)})`;
+                manualAmountValidation.style.color = '#fa709a';
+            } else {
+                manualAmountValidation.textContent = `✓ Net after fees: €${netAmount.toFixed(2)}`;
+                manualAmountValidation.style.color = '#43e97b';
+            }
+        });
+    }
 
     if (manualBuyBtn) {
         manualBuyBtn.addEventListener('click', () => {
@@ -2028,8 +2069,29 @@
                 alert('Please select an asset first');
                 return;
             }
-            if (confirm(`Execute Manual BUY for ${selectedAsset} at current price?`)) {
-                socket.emit('manual-buy', selectedAsset);
+
+            // V2.0 Phase 4: Get custom amount if specified
+            const customAmount = manualAmountInput ? parseFloat(manualAmountInput.value) || null : null;
+            const FEE_RATE = 0.0025;
+            const walletEl = $('wallet');
+            const currentWallet = walletEl ? parseFloat(walletEl.innerText.replace('€', '').replace(',', '')) || 0 : 0;
+
+            // Validate custom amount if provided
+            if (customAmount) {
+                const netAmount = customAmount * (1 - FEE_RATE);
+                if (netAmount < 5) {
+                    alert(`Amount too small. Net amount after fees (€${netAmount.toFixed(2)}) must be at least €5.`);
+                    return;
+                }
+                if (customAmount > currentWallet) {
+                    alert(`Insufficient funds. Amount (€${customAmount.toFixed(2)}) exceeds wallet balance (€${currentWallet.toFixed(2)}).`);
+                    return;
+                }
+            }
+
+            const amountText = customAmount ? ` €${customAmount.toFixed(2)}` : '';
+            if (confirm(`Execute Manual BUY for ${selectedAsset}${amountText} at current price?`)) {
+                socket.emit('manual-buy', { market: selectedAsset, amount: customAmount });
             }
         });
     }
@@ -2041,8 +2103,13 @@
                 alert('Please select an asset first');
                 return;
             }
-            if (confirm(`Execute Manual SELL for ${selectedAsset} at current price?`)) {
-                socket.emit('manual-sell', selectedAsset);
+
+            // V2.0 Phase 4: Get custom amount if specified (for partial sells)
+            const customAmount = manualAmountInput ? parseFloat(manualAmountInput.value) || null : null;
+
+            const amountText = customAmount ? ` (€${customAmount.toFixed(2)} worth)` : ' (all holdings)';
+            if (confirm(`Execute Manual SELL for ${selectedAsset}${amountText} at current price?`)) {
+                socket.emit('manual-sell', { market: selectedAsset, amount: customAmount });
             }
         });
     }

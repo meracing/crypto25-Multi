@@ -255,15 +255,24 @@ io.on('connection', (socket) => {
     });
 
     // Manual trading handlers - now expect market parameter
-    socket.on('manual-buy', (market) => {
+    // V2.0 Phase 4: Support custom amounts
+    socket.on('manual-buy', (data) => {
+        // Support both old format (string) and new format (object with custom amount)
+        const market = typeof data === 'string' ? data : data.market;
+        const customAmount = typeof data === 'object' ? data.amount : null;
+
         if (typeof manualBuyHandler === 'function') {
-            manualBuyHandler(market);
+            manualBuyHandler(market, customAmount);
         }
     });
 
-    socket.on('manual-sell', (market) => {
+    socket.on('manual-sell', (data) => {
+        // Support both old format (string) and new format (object with custom amount)
+        const market = typeof data === 'string' ? data : data.market;
+        const customAmount = typeof data === 'object' ? data.amount : null;
+
         if (typeof manualSellHandler === 'function') {
-            manualSellHandler(market);
+            manualSellHandler(market, customAmount);
         }
     });
 
@@ -1747,7 +1756,7 @@ async function startTradingWithConfig(config) {
     // ============================================================
     // V2.0 PHASE 2B: MANUAL TRADING HANDLERS (Updated for Batch System)
     // ============================================================
-    manualBuyHandler = async (market) => {
+    manualBuyHandler = async (market, customAmount = null) => {
         const asset = assets.find(a => a.market === market);
         if (!asset) {
             console.log(`Manual BUY ignored - asset ${market} not found`);
@@ -1755,10 +1764,23 @@ async function startTradingWithConfig(config) {
         }
 
         if (asset.currentState === states.BUY && asset.latestPrice !== null) {
-            console.log(`[${market}] Manual BUY triggered`);
+            const buyAmountToUse = customAmount || tradingConfig.buyAmount;
+            console.log(`[${market}] Manual BUY triggered${customAmount ? ` with custom amount €${customAmount.toFixed(2)}` : ''}`);
+
+            // V2.0 Phase 4: Temporarily override buy amount for this manual trade
+            const originalBuyAmount = tradingConfig.buyAmount;
+            if (customAmount) {
+                tradingConfig.buyAmount = customAmount;
+            }
+
             // V2.0: buy() now creates a batch automatically
             await buy(asset, 'Manual Buy', asset.latestPrice);
             asset.currentState = states.SELL;
+
+            // Restore original buy amount
+            if (customAmount) {
+                tradingConfig.buyAmount = originalBuyAmount;
+            }
 
             // Emit buy-price and max-price events for frontend display
             io.emit('buy-price', { market, price: asset.latestPrice });
@@ -1767,14 +1789,27 @@ async function startTradingWithConfig(config) {
             // Emit check event for table with buy amount
             const eventIndex = asset.tradeIndex++;
             const eventTime = new Date().toISOString();
-            // V2.0 Phase 2C: Include batches in manual buy event
-            io.emit('check', { market, amount: buyAmount, price: asset.latestPrice, reason: 'Manual Buy', action: 'buy', wallet, eventIndex, eventTime, batches: asset.batches || [] });
+            // V2.0 Phase 2C/4: Include batches and portfolio tracking in manual buy event
+            io.emit('check', {
+                market,
+                amount: buyAmountToUse,
+                price: asset.latestPrice,
+                reason: 'Manual Buy',
+                action: 'buy',
+                wallet,
+                eventIndex,
+                eventTime,
+                batches: asset.batches || [],
+                totalProfit: asset.totalProfit || 0,
+                totalInvested: asset.totalInvested || 0,
+                totalTrades: asset.totalTrades || 0
+            });
         } else {
             console.log(`[${market}] Manual BUY ignored - already in SELL state or no price available`);
         }
     };
 
-    manualSellHandler = async (market) => {
+    manualSellHandler = async (market, customAmount = null) => {
         const asset = assets.find(a => a.market === market);
         if (!asset) {
             console.log(`Manual SELL ignored - asset ${market} not found`);
@@ -1782,42 +1817,86 @@ async function startTradingWithConfig(config) {
         }
 
         if (asset.currentState === states.SELL && asset.latestPrice !== null) {
-            console.log(`[${market}] Manual SELL triggered`);
+            console.log(`[${market}] Manual SELL triggered${customAmount ? ` with custom EUR value €${customAmount.toFixed(2)}` : ' (all holdings)'}`);
 
-            // V2.0: Sell all remaining crypto across all batches
+            // V2.0 Phase 4: Support partial sell by EUR value
             let totalEurReceived = 0;
+            let targetEurValue = customAmount; // null = sell all
+
             if (asset.batches && asset.batches.length > 0) {
                 for (const batch of asset.batches) {
                     if (batch.remainingCrypto > 0) {
-                        const eurReceived = await executeSell(asset, batch.remainingCrypto, asset.latestPrice);
+                        // Calculate how much crypto to sell
+                        let cryptoToSell = batch.remainingCrypto;
+
+                        if (targetEurValue !== null) {
+                            // Partial sell: Calculate crypto amount for target EUR value
+                            const currentValue = batch.remainingCrypto * asset.latestPrice;
+                            if (currentValue <= targetEurValue) {
+                                // This entire batch is less than target, sell it all
+                                cryptoToSell = batch.remainingCrypto;
+                                targetEurValue -= currentValue;
+                            } else {
+                                // Sell only part of this batch
+                                cryptoToSell = targetEurValue / asset.latestPrice;
+                                targetEurValue = 0;
+                            }
+                        }
+
+                        const eurReceived = await executeSell(asset, cryptoToSell, asset.latestPrice);
                         totalEurReceived += eurReceived;
-                        batch.status = "completed";
 
-                        // V2.0 Phase 3: Record manual sell profit
-                        if (!batch.totalEurReceived) batch.totalEurReceived = 0;
-                        batch.totalEurReceived += eurReceived;
-                        recordBatchProfit(asset, batch, batch.totalEurReceived);
+                        // Update batch
+                        batch.remainingCrypto -= cryptoToSell;
+                        if (batch.remainingCrypto < 0.00000001) batch.remainingCrypto = 0;
 
-                        console.log(`[${market}] Manually sold batch ${batch.batchId}: €${eurReceived.toFixed(2)}`);
+                        if (batch.remainingCrypto === 0) {
+                            batch.status = "completed";
+                            // V2.0 Phase 3: Record batch profit
+                            if (!batch.totalEurReceived) batch.totalEurReceived = 0;
+                            batch.totalEurReceived += eurReceived;
+                            recordBatchProfit(asset, batch, batch.totalEurReceived);
+                        }
+
+                        console.log(`[${market}] Manually sold ${cryptoToSell.toFixed(8)} from batch ${batch.batchId}: €${eurReceived.toFixed(2)}`);
+
+                        // Stop if we've sold the target EUR value
+                        if (targetEurValue !== null && targetEurValue <= 0) break;
                     }
                 }
+
+                // Remove completed batches
+                asset.batches = asset.batches.filter(b => b.status !== "completed");
             }
 
-            // Clear all batches
-            asset.batches = [];
-            asset.currentState = states.BUY;
-            asset.buyPrice = 0;
-            asset.maxPrice = 0;
-            asset.cryptoAmount = 0;
+            // If all batches sold, reset to BUY state
+            if (!asset.batches || asset.batches.length === 0) {
+                asset.currentState = states.BUY;
+                asset.buyPrice = 0;
+                asset.maxPrice = 0;
+                asset.cryptoAmount = 0;
+                io.emit('buy-price', { market, price: '-' });
+                io.emit('max-price', { market, price: '-' });
+            }
 
-            io.emit('buy-price', { market, price: '-' });
-            io.emit('max-price', { market, price: '-' });
-
-            // Emit check event for table with total profit amount
+            // Emit check event for table with total EUR received
             const eventIndex = asset.tradeIndex++;
             const eventTime = new Date().toISOString();
-            // V2.0 Phase 2C: Include batches (will be empty after sell) in manual sell event
-            io.emit('check', { market, amount: totalEurReceived, price: asset.latestPrice, reason: 'Manual Sell', action: 'sell', wallet, eventIndex, eventTime, batches: asset.batches || [] });
+            // V2.0 Phase 2C/4: Include batches and portfolio tracking in manual sell event
+            io.emit('check', {
+                market,
+                amount: totalEurReceived,
+                price: asset.latestPrice,
+                reason: customAmount ? 'Manual Partial Sell' : 'Manual Sell',
+                action: 'sell',
+                wallet,
+                eventIndex,
+                eventTime,
+                batches: asset.batches || [],
+                totalProfit: asset.totalProfit || 0,
+                totalInvested: asset.totalInvested || 0,
+                totalTrades: asset.totalTrades || 0
+            });
 
             console.log(`[${market}] Manual sell complete: Total received €${totalEurReceived.toFixed(2)}`);
         } else {

@@ -489,7 +489,7 @@
                         <div>
                             <div style="font-size: 0.8rem; color: #9db4d1; margin-bottom: 6px;">💰 Total Value</div>
                             <div id="portfolio-total-value" style="font-size: 1.6rem; font-weight: 700; color: #4facfe;">€0.00</div>
-                            <div style="font-size: 0.75rem; color: #7b8fa1; margin-top: 4px;">Wallet + Crypto</div>
+                            <div style="font-size: 0.75rem; color: #7b8fa1; margin-top: 4px;" title="Includes estimated 0.25% sell fee on crypto holdings">Wallet + Crypto (net)</div>
                         </div>
                         <div>
                             <div style="font-size: 0.8rem; color: #9db4d1; margin-bottom: 6px;">📈 Total Profit/Loss</div>
@@ -1029,11 +1029,15 @@
             const assetTotalTrades = asset.totalTrades || 0;
 
             // Calculate current crypto holdings value
+            // V2.0 Phase 4: Include estimated sell fees (0.25%)
+            const FEE_RATE = 0.0025;
             const batches = asset.batches || [];
             let assetCryptoValue = 0;
             batches.forEach(batch => {
                 if (batch.remainingCrypto > 0 && asset.currentPrice) {
-                    assetCryptoValue += batch.remainingCrypto * asset.currentPrice;
+                    const grossValue = batch.remainingCrypto * asset.currentPrice;
+                    const netValue = grossValue * (1 - FEE_RATE); // Subtract estimated sell fee
+                    assetCryptoValue += netValue;
                 }
             });
 

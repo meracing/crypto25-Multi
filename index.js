@@ -189,6 +189,7 @@ console.log(`Server session ID: ${SERVER_SESSION_ID}`);
 let selectedMarket = null;
 let currentWallet = null;
 let currentTradingMode = null;
+let currentTradingConfig = null; // V2.0 Phase 5: Store trading config for persistence
 let manualBuyHandler = null;
 let manualSellHandler = null;
 let currentLastPrices = [];
@@ -384,16 +385,102 @@ server.listen(PORT, async () => {
         await persistence.initStorage();
         console.log('🚀 Crypto Trading Bot Started!');
         console.log('📊 Open http://localhost:3007 in your browser to configure trading');
+
+        // V2.0 Phase 5B: Try to restore previous state
+        await restorePreviousState();
     } catch (err) {
         console.error('❌ Failed to initialize storage:', err);
     }
 });
 
 // ============================================================
-// V2.0 PHASE 5: GRACEFUL SHUTDOWN & AUTO-SAVE
+// V2.0 PHASE 5: STATE RESTORATION & AUTO-SAVE
 // ============================================================
-// Save state before exit and handle periodic backups
+// Load previous state on startup and save periodically
 // ============================================================
+
+/**
+ * Restore previous trading state from disk
+ * Called on server startup to resume trading sessions
+ */
+async function restorePreviousState() {
+    try {
+        const savedState = await persistence.loadState();
+
+        if (!savedState) {
+            console.log('ℹ️  No previous state to restore');
+            return;
+        }
+
+        // Check if this is the same server session (no need to restore if same session)
+        if (savedState.serverSessionId === SERVER_SESSION_ID) {
+            console.log('ℹ️  Same server session, skipping state restoration');
+            return;
+        }
+
+        console.log('🔄 Restoring previous state...');
+
+        // Restore global state
+        if (savedState.tradingMode) {
+            currentTradingMode = savedState.tradingMode;
+            console.log(`   Trading mode: ${currentTradingMode}`);
+        }
+
+        if (savedState.wallet !== null && savedState.wallet !== undefined) {
+            currentWallet = savedState.wallet;
+            console.log(`   Wallet: €${currentWallet.toFixed(2)}`);
+        }
+
+        if (savedState.selectedMarkets && savedState.selectedMarkets.length > 0) {
+            selectedMarket = savedState.selectedMarkets;
+            console.log(`   Markets: ${selectedMarket.join(', ')}`);
+        }
+
+        if (savedState.assets && savedState.assets.length > 0) {
+            currentAssets = savedState.assets;
+            console.log(`   Assets: ${currentAssets.length} active position(s)`);
+
+            // Count total batches
+            const totalBatches = currentAssets.reduce((sum, asset) => {
+                return sum + (asset.batches ? asset.batches.length : 0);
+            }, 0);
+            console.log(`   Batches: ${totalBatches} active batch(es)`);
+        }
+
+        // Notify connected clients about restored state
+        if (selectedMarket) {
+            io.emit('market-selected', selectedMarket);
+        }
+        if (currentWallet !== null) {
+            io.emit('wallet', currentWallet);
+        }
+        if (currentTradingMode) {
+            io.emit('trading-mode', currentTradingMode);
+        }
+
+        // Emit active positions to clients
+        if (currentAssets && currentAssets.length > 0) {
+            const activePositions = currentAssets
+                .filter(asset => asset.currentState === 'sell')
+                .map(asset => ({
+                    market: asset.market,
+                    batches: asset.batches || [],
+                    buyPrice: asset.buyPrice,
+                    cryptoAmount: asset.cryptoAmount,
+                    maxPrice: asset.maxPrice,
+                    currentState: asset.currentState
+                }));
+
+            io.emit('active-positions-restored', activePositions);
+        }
+
+        console.log('✅ State restored successfully');
+        console.log('💡 Use /config.html to resume trading or start fresh');
+
+    } catch (err) {
+        console.error('❌ Failed to restore state:', err);
+    }
+}
 
 // Periodic auto-save (every 60 seconds)
 let autoSaveInterval = null;
@@ -429,7 +516,7 @@ async function saveCurrentState() {
             wallet: currentWallet,
             selectedMarkets: selectedMarket,
             assets: currentAssets,
-            tradingConfig: null, // Will be set when trading starts
+            tradingConfig: currentTradingConfig, // V2.0 Phase 5: Include trading config
             checkLoopStarted: checkLoopStarted,
             currentLastPrices: currentLastPrices
         };
@@ -545,6 +632,7 @@ async function startTradingWithConfig(config) {
 
     // V2.0 Phase 2: Store trading configuration for buy operations
     // V2.0 Phase 3: Added investment strategy
+    // V2.0 Phase 5: Store in global variable for persistence
     const tradingConfig = {
         buyAmount,
         tradingMode,
@@ -560,6 +648,9 @@ async function startTradingWithConfig(config) {
             lossFallback: 'base-amount'
         }
     };
+
+    // V2.0 Phase 5: Store config globally for persistence
+    currentTradingConfig = tradingConfig;
 
     // Create asset objects for each selected market
     const assets = selectedAssets.map(market => {

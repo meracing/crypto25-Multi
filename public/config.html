@@ -766,10 +766,10 @@
             <div style="margin-bottom: 20px;">
                 <label style="display: block; margin-bottom: 8px; font-size: 0.9rem; color: #9db4d1;">After a loss, buy with...</label>
                 <select id="loss-fallback" style="width: 100%; padding: 12px; background: #16213e; color: #e8eaed; border: 2px solid rgba(0, 217, 255, 0.3); border-radius: 8px; font-size: 0.95rem; cursor: pointer;">
-                    <option value="base-amount" selected>Starting amount (safe option)</option>
-                    <option value="stop-loss-proceeds">Whatever you got back from stop-loss</option>
+                    <option value="base-amount" selected>Starting amount (wallet must have enough)</option>
+                    <option value="stop-loss-proceeds">Whatever you got back (min €5 required, or uses starting amount)</option>
                 </select>
-                <small style="display: block; margin-top: 6px; color: #7b8fa1; font-size: 0.8rem;">⚠️ Wallet must have at least €5 to buy. If using stop-loss proceeds and wallet &lt; €5, will use starting amount instead.</small>
+                <small style="display: block; margin-top: 6px; color: #7b8fa1; font-size: 0.8rem;">⚠️ Wallet needs to have the buy amount available. Stop-loss proceeds option requires at least €5 after fees.</small>
             </div>
 
             <!-- Real-Time Preview -->

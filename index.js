@@ -30,6 +30,8 @@ import open from 'open';
 import Bitvavo from 'bitvavo';
 import fs from 'fs';
 import dotenv from 'dotenv';
+// V2.0 Phase 5: Persistent storage
+import * as persistence from './persistence.js';
 
 // Load .env if present; otherwise fall back to bitvavo.env (no file writes)
 const envPath = fs.existsSync('.env') ? '.env' : (fs.existsSync('bitvavo.env') ? 'bitvavo.env' : null);
@@ -374,9 +376,116 @@ async function getMarkets() {
         });
 }
 
-server.listen(PORT, () => {
+server.listen(PORT, async () => {
     console.log(`listening on *:${PORT}`);
+
+    // V2.0 Phase 5: Initialize persistent storage
+    try {
+        await persistence.initStorage();
+        console.log('🚀 Crypto Trading Bot Started!');
+        console.log('📊 Open http://localhost:3007 in your browser to configure trading');
+    } catch (err) {
+        console.error('❌ Failed to initialize storage:', err);
+    }
 });
+
+// ============================================================
+// V2.0 PHASE 5: GRACEFUL SHUTDOWN & AUTO-SAVE
+// ============================================================
+// Save state before exit and handle periodic backups
+// ============================================================
+
+// Periodic auto-save (every 60 seconds)
+let autoSaveInterval = null;
+
+function startAutoSave() {
+    if (autoSaveInterval) return; // Already running
+
+    autoSaveInterval = setInterval(async () => {
+        if (currentAssets && currentAssets.length > 0) {
+            await saveCurrentState();
+        }
+    }, 60000); // 60 seconds
+
+    console.log('💾 Auto-save enabled (every 60 seconds)');
+}
+
+function stopAutoSave() {
+    if (autoSaveInterval) {
+        clearInterval(autoSaveInterval);
+        autoSaveInterval = null;
+        console.log('⏸️  Auto-save stopped');
+    }
+}
+
+/**
+ * Save current trading state to disk
+ */
+async function saveCurrentState() {
+    try {
+        const state = {
+            serverSessionId: SERVER_SESSION_ID,
+            tradingMode: currentTradingMode,
+            wallet: currentWallet,
+            selectedMarkets: selectedMarket,
+            assets: currentAssets,
+            tradingConfig: null, // Will be set when trading starts
+            checkLoopStarted: checkLoopStarted,
+            currentLastPrices: currentLastPrices
+        };
+
+        const success = await persistence.saveState(state);
+        if (success) {
+            console.log('💾 State saved successfully');
+        }
+    } catch (err) {
+        console.error('❌ Failed to save state:', err);
+    }
+}
+
+// Graceful shutdown handlers
+async function handleShutdown(signal) {
+    console.log(`\n⚠️  Received ${signal}, shutting down gracefully...`);
+
+    try {
+        // Stop auto-save
+        stopAutoSave();
+
+        // Save current state
+        if (currentAssets && currentAssets.length > 0) {
+            console.log('💾 Saving final state...');
+            await saveCurrentState();
+            await persistence.archiveState();
+        }
+
+        // Close WebSocket connections
+        if (client?.websocket) {
+            console.log('🔌 Closing WebSocket connection...');
+            client.websocket.close();
+        }
+
+        // Close server
+        server.close(() => {
+            console.log('✅ Server closed gracefully');
+            process.exit(0);
+        });
+
+        // Force exit after 10 seconds if graceful shutdown fails
+        setTimeout(() => {
+            console.error('⚠️  Forced shutdown after timeout');
+            process.exit(1);
+        }, 10000);
+
+    } catch (err) {
+        console.error('❌ Error during shutdown:', err);
+        process.exit(1);
+    }
+}
+
+// Register shutdown handlers
+process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+process.on('SIGINT', () => handleShutdown('SIGINT'));
+process.on('SIGHUP', () => handleShutdown('SIGHUP'));
 
 // ============================================================
 // MAIN TRADING LOGIC
@@ -745,6 +854,9 @@ async function startTradingWithConfig(config) {
             }
 
             console.log(`WebSocket subscriptions active for ${assets.length} asset(s)`);
+
+            // V2.0 Phase 5: Start auto-save when trading begins
+            startAutoSave();
         } catch (err) {
             console.error('WebSocket initialization failed:', err);
             console.log('Falling back to REST polling...');

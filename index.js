@@ -1827,6 +1827,22 @@ async function startTradingWithConfig(config) {
                     totalTrades: asset.totalTrades || 0
                 });
 
+                // V2.0 Phase 5C: Calculate rebuy amount based on step percentage + profit reinvestment
+                // Formula: (step% × baseAmount) + (profitReinvest% × profit)
+                const baseAmount = tradingConfig.investmentStrategy.baseAmount;
+                const profitReinvestPercent = tradingConfig.investmentStrategy.profitReinvestPercent;
+
+                // Calculate profit from this step
+                const stepCost = (nextStep.percentage / 100) * batch.buyAmount; // Original cost of this step
+                const stepProfit = eurReceived - stepCost; // Profit from this step
+
+                // Calculate rebuy amount
+                const baseRebuyAmount = (nextStep.percentage / 100) * baseAmount; // e.g., 20% of €50 = €10
+                const profitReinvestAmount = (profitReinvestPercent / 100) * stepProfit; // e.g., 100% of €2 profit = €2
+                const totalRebuyAmount = baseRebuyAmount + profitReinvestAmount; // e.g., €10 + €2 = €12
+
+                console.log(`[${asset.market}] Rebuy calculation: ${nextStep.percentage}% of €${baseAmount} = €${baseRebuyAmount.toFixed(2)}, profit reinvest ${profitReinvestPercent}% of €${stepProfit.toFixed(2)} = €${profitReinvestAmount.toFixed(2)}, total = €${totalRebuyAmount.toFixed(2)}`);
+
                 // Check if batch is complete
                 if (batch.remainingPercent <= 0 || batch.remainingCrypto < 0.00000001) {
                     batch.status = "completed";
@@ -1840,24 +1856,34 @@ async function startTradingWithConfig(config) {
                         batchId: batch.batchId
                     });
 
-                    // V2.0 Phase 5C FIX: Auto-rebuy after batch complete
-                    // Trigger immediate buy if wallet has funds
-                    if (wallet >= tradingConfig.investmentStrategy.baseAmount) {
+                    // V2.0 Phase 5C: Auto-rebuy after batch complete (use full base amount)
+                    if (wallet >= baseAmount) {
                         console.log(`[${asset.market}] Triggering auto-rebuy after batch completion (€${wallet.toFixed(2)} available)`);
+                        // Override buy amount temporarily for this rebuy
+                        const originalBuyAmount = tradingConfig.buyAmount;
+                        tradingConfig.buyAmount = baseAmount;
                         await buy(asset, `Auto-rebuy after batch ${batch.batchId}`, currentPrice);
+                        tradingConfig.buyAmount = originalBuyAmount;
                     } else {
-                        console.log(`[${asset.market}] Insufficient funds for auto-rebuy (need €${tradingConfig.investmentStrategy.baseAmount}, have €${wallet.toFixed(2)})`);
+                        console.log(`[${asset.market}] Insufficient funds for auto-rebuy (need €${baseAmount.toFixed(2)}, have €${wallet.toFixed(2)})`);
                     }
                 } else {
-                    // V2.0 Phase 5C FIX: Auto-rebuy after PARTIAL sell (batch still active)
-                    // This creates concurrent batches for the same asset
+                    // V2.0 Phase 5C: Auto-rebuy after PARTIAL sell (creates concurrent batch)
                     console.log(`[${asset.market}] Partial sell complete, batch ${batch.batchId} still active with ${batch.remainingPercent}%`);
 
-                    if (wallet >= tradingConfig.investmentStrategy.baseAmount) {
-                        console.log(`[${asset.market}] Triggering auto-rebuy for concurrent batch (€${wallet.toFixed(2)} available)`);
+                    // Validate minimum after fees
+                    const netRebuyAmount = totalRebuyAmount * (1 - FEE_RATE);
+                    if (netRebuyAmount < 5) {
+                        console.log(`[${asset.market}] Rebuy amount too small (€${netRebuyAmount.toFixed(2)} net), minimum €5 required`);
+                    } else if (wallet >= totalRebuyAmount) {
+                        console.log(`[${asset.market}] Triggering auto-rebuy for concurrent batch (€${wallet.toFixed(2)} available, buying €${totalRebuyAmount.toFixed(2)})`);
+                        // Override buy amount temporarily for this rebuy
+                        const originalBuyAmount = tradingConfig.buyAmount;
+                        tradingConfig.buyAmount = totalRebuyAmount;
                         await buy(asset, `Auto-rebuy after partial sell (step ${nextStep.stepId})`, currentPrice);
+                        tradingConfig.buyAmount = originalBuyAmount;
                     } else {
-                        console.log(`[${asset.market}] Insufficient funds for auto-rebuy (need €${tradingConfig.investmentStrategy.baseAmount}, have €${wallet.toFixed(2)})`);
+                        console.log(`[${asset.market}] Insufficient funds for auto-rebuy (need €${totalRebuyAmount.toFixed(2)}, have €${wallet.toFixed(2)})`);
                     }
                 }
             }

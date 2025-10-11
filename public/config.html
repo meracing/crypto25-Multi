@@ -722,61 +722,54 @@
             </div>
         </div>
 
-        <!-- V2.0 Phase 3B: Investment Strategy Configuration -->
+        <!-- V2.0 Phase 3B: Investment Strategy Configuration (Simplified) -->
         <div class="section">
             <div class="section-title">
                 💰 Investment Strategy
-                <span class="tooltip-icon" style="cursor: help; margin-left: 8px; font-size: 0.9rem;" title="Controls how your buy amounts change based on profit/loss from previous sales">ℹ️</span>
-            </div>
-
-            <!-- Strategy Preset Selector -->
-            <div style="margin-bottom: 20px;">
-                <label style="display: block; margin-bottom: 8px; font-size: 0.9rem; color: #9db4d1;">How should profit affect next buy?</label>
-                <select id="investment-strategy-mode" style="width: 100%; padding: 12px; background: #16213e; color: #e8eaed; border: 2px solid rgba(0, 217, 255, 0.3); border-radius: 8px; font-size: 0.95rem; cursor: pointer;">
-                    <option value="disabled">Fixed Amount - Don't adjust (always buy with base amount)</option>
-                    <option value="base-only">Bank Profit - Keep all profit in wallet (always buy with base amount)</option>
-                    <option value="profit-split" selected>Split Profit - Divide profit 50/50 between next buy and wallet</option>
-                    <option value="full-reinvest">Reinvest All - Add all profit to next buy (compound growth)</option>
-                    <option value="custom">Custom - Set your own percentages</option>
-                </select>
-                <small style="display: block; margin-top: 6px; color: #7b8fa1; font-size: 0.8rem;">💡 Example: If you make €10 profit with "Split Profit", next buy will be €55 (€50 base + €5 profit)</small>
             </div>
 
             <!-- Base Amount -->
             <div style="margin-bottom: 20px;">
                 <label style="display: block; margin-bottom: 8px; font-size: 0.9rem; color: #9db4d1;">Starting Buy Amount per Asset (€5 - €500)</label>
                 <input type="number" id="investment-base-amount" value="50" min="5" max="500" step="5" style="width: 100%; padding: 12px; background: #16213e; color: #e8eaed; border: 2px solid rgba(0, 217, 255, 0.3); border-radius: 8px; font-size: 0.95rem;">
-                <small style="display: block; margin-top: 6px; color: #7b8fa1; font-size: 0.8rem;">💡 Your first buy and minimum for all buys (can increase based on profit)</small>
+                <small style="display: block; margin-top: 6px; color: #7b8fa1; font-size: 0.8rem;">💡 Your first buy and minimum for all buys</small>
             </div>
 
-            <!-- Profit Reinvest % (shown for custom/profit-split) -->
-            <div id="profit-reinvest-group" style="margin-bottom: 20px;">
-                <label style="display: block; margin-bottom: 8px; font-size: 0.9rem; color: #9db4d1;">How much profit to reinvest? (0-100%)</label>
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <input type="range" id="profit-reinvest-percent" value="50" min="0" max="100" step="5" style="flex: 1;">
-                    <input type="number" id="profit-reinvest-percent-value" value="50" min="0" max="100" step="5" style="width: 80px; padding: 8px; background: #16213e; color: #e8eaed; border: 2px solid rgba(0, 217, 255, 0.3); border-radius: 8px; text-align: center;">
-                </div>
-                <small style="display: block; margin-top: 6px; color: #7b8fa1; font-size: 0.8rem;">💡 This % of profit gets added to your next buy amount</small>
-            </div>
+            <!-- Simplified Strategy Options -->
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 12px; font-size: 0.9rem; color: #9db4d1;">How should profit affect next buy?</label>
 
-            <!-- Wallet Reserve % (shown for custom/profit-split) -->
-            <div id="wallet-reserve-group" style="margin-bottom: 20px;">
-                <label style="display: block; margin-bottom: 8px; font-size: 0.9rem; color: #9db4d1;">How much profit to keep in wallet? (0-100%)</label>
-                <div style="display: flex; gap: 10px; align-items: center;">
-                    <input type="range" id="wallet-reserve-percent" value="50" min="0" max="100" step="5" style="flex: 1;">
-                    <input type="number" id="wallet-reserve-percent-value" value="50" min="0" max="100" step="5" style="width: 80px; padding: 8px; background: #16213e; color: #e8eaed; border: 2px solid rgba(0, 217, 255, 0.3); border-radius: 8px; text-align: center;">
+                <!-- Option Buttons -->
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 15px;">
+                    <button type="button" id="strategy-fixed" class="strategy-option" data-percent="0" style="padding: 12px; background: #16213e; color: #e8eaed; border: 2px solid rgba(0, 217, 255, 0.3); border-radius: 8px; cursor: pointer; transition: all 0.3s;">
+                        Always use starting amount
+                    </button>
+                    <button type="button" id="strategy-full" class="strategy-option" data-percent="100" style="padding: 12px; background: #16213e; color: #e8eaed; border: 2px solid rgba(0, 217, 255, 0.3); border-radius: 8px; cursor: pointer; transition: all 0.3s;">
+                        Starting amount + all profit
+                    </button>
                 </div>
-                <small style="display: block; margin-top: 6px; color: #7b8fa1; font-size: 0.8rem;">💡 This % of profit stays in your wallet (Reinvest + Wallet must equal 100%)</small>
+
+                <!-- Profit Reinvest Slider -->
+                <div style="margin-bottom: 10px;">
+                    <label style="display: block; margin-bottom: 8px; font-size: 0.85rem; color: #9db4d1;">Or adjust manually:</label>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <span style="font-size: 0.8rem; color: #7b8fa1;">0%</span>
+                        <input type="range" id="profit-reinvest-percent" value="0" min="0" max="100" step="5" style="flex: 1;">
+                        <span style="font-size: 0.8rem; color: #7b8fa1;">100%</span>
+                        <input type="number" id="profit-reinvest-percent-value" value="0" min="0" max="100" step="5" style="width: 70px; padding: 8px; background: #16213e; color: #e8eaed; border: 2px solid rgba(0, 217, 255, 0.3); border-radius: 8px; text-align: center; font-size: 0.9rem;">
+                    </div>
+                </div>
+                <small style="display: block; margin-top: 6px; color: #7b8fa1; font-size: 0.8rem;">💡 0% = always use starting amount | 100% = reinvest all profit | 50% = add half of profit to next buy</small>
             </div>
 
             <!-- Loss Fallback -->
             <div style="margin-bottom: 20px;">
                 <label style="display: block; margin-bottom: 8px; font-size: 0.9rem; color: #9db4d1;">After a loss, buy with...</label>
                 <select id="loss-fallback" style="width: 100%; padding: 12px; background: #16213e; color: #e8eaed; border: 2px solid rgba(0, 217, 255, 0.3); border-radius: 8px; font-size: 0.95rem; cursor: pointer;">
-                    <option value="base-amount" selected>Base Amount (always €50 if that's your base)</option>
+                    <option value="base-amount" selected>Starting amount (safe option)</option>
                     <option value="stop-loss-proceeds">Whatever you got back from stop-loss</option>
                 </select>
-                <small style="display: block; margin-top: 6px; color: #7b8fa1; font-size: 0.8rem;">💡 If stop-loss gives you €42.50, base amount option uses €50, proceeds option uses €42.50</small>
+                <small style="display: block; margin-top: 6px; color: #7b8fa1; font-size: 0.8rem;">⚠️ Wallet must have at least €5 to buy. If using stop-loss proceeds and wallet &lt; €5, will use starting amount instead.</small>
             </div>
 
             <!-- Real-Time Preview -->
@@ -784,15 +777,14 @@
                 <h3 style="margin-bottom: 15px; font-size: 1rem; color: #00d9ff;">📊 Next Buy Preview</h3>
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                     <div style="background: rgba(67, 233, 123, 0.1); padding: 12px; border-radius: 8px; border: 1px solid rgba(67, 233, 123, 0.3);">
-                        <div style="font-size: 0.8rem; color: #9db4d1; margin-bottom: 4px;">If last sell profit: <span style="color: #43e97b;">+€10</span></div>
-                        <div style="font-size: 1.2rem; font-weight: 700; color: #43e97b;">€<span id="preview-profit">55.00</span></div>
+                        <div style="font-size: 0.8rem; color: #9db4d1; margin-bottom: 4px;">After <span style="color: #43e97b;">+€10 profit</span></div>
+                        <div style="font-size: 1.2rem; font-weight: 700; color: #43e97b;">€<span id="preview-profit">50.00</span></div>
                     </div>
                     <div style="background: rgba(250, 112, 154, 0.1); padding: 12px; border-radius: 8px; border: 1px solid rgba(250, 112, 154, 0.3);">
-                        <div style="font-size: 0.8rem; color: #9db4d1; margin-bottom: 4px;">If last sell loss: <span style="color: #fa709a;">-€10</span></div>
+                        <div style="font-size: 0.8rem; color: #9db4d1; margin-bottom: 4px;">After <span style="color: #fa709a;">-€10 loss</span></div>
                         <div style="font-size: 1.2rem; font-weight: 700; color: #fa709a;">€<span id="preview-loss">50.00</span></div>
                     </div>
                 </div>
-                <div id="strategy-validation-message" style="margin-top: 12px; font-size: 0.85rem; padding: 10px; border-radius: 6px; display: none;"></div>
             </div>
         </div>
 
@@ -1234,94 +1226,79 @@
         });
 
         // ============================================================
-        // V2.0 PHASE 3B: INVESTMENT STRATEGY FUNCTIONS
+        // V2.0 PHASE 3B: INVESTMENT STRATEGY FUNCTIONS (Simplified)
         // ============================================================
 
-        // Sync slider with number input
+        // Get references
         const profitReinvestSlider = document.getElementById('profit-reinvest-percent');
         const profitReinvestValue = document.getElementById('profit-reinvest-percent-value');
-        const walletReserveSlider = document.getElementById('wallet-reserve-percent');
-        const walletReserveValue = document.getElementById('wallet-reserve-percent-value');
+        const strategyFixedBtn = document.getElementById('strategy-fixed');
+        const strategyFullBtn = document.getElementById('strategy-full');
 
+        // Strategy button handlers - set slider to 0% or 100%
+        strategyFixedBtn.addEventListener('click', () => {
+            setProfitReinvest(0);
+            updateButtonStyles();
+            updateInvestmentPreview();
+        });
+
+        strategyFullBtn.addEventListener('click', () => {
+            setProfitReinvest(100);
+            updateButtonStyles();
+            updateInvestmentPreview();
+        });
+
+        // Sync slider with number input
         profitReinvestSlider.addEventListener('input', (e) => {
             profitReinvestValue.value = e.target.value;
+            updateButtonStyles();
             updateInvestmentPreview();
         });
 
         profitReinvestValue.addEventListener('input', (e) => {
-            profitReinvestSlider.value = e.target.value;
-            updateInvestmentPreview();
-        });
-
-        walletReserveSlider.addEventListener('input', (e) => {
-            walletReserveValue.value = e.target.value;
-            updateInvestmentPreview();
-        });
-
-        walletReserveValue.addEventListener('input', (e) => {
-            walletReserveSlider.value = e.target.value;
+            let value = parseInt(e.target.value) || 0;
+            value = Math.max(0, Math.min(100, value));
+            e.target.value = value;
+            profitReinvestSlider.value = value;
+            updateButtonStyles();
             updateInvestmentPreview();
         });
 
         // Update preview when settings change
-        document.getElementById('investment-strategy-mode').addEventListener('change', applyStrategyPreset);
         document.getElementById('investment-base-amount').addEventListener('input', updateInvestmentPreview);
         document.getElementById('loss-fallback').addEventListener('change', updateInvestmentPreview);
-
-        function applyStrategyPreset() {
-            const mode = document.getElementById('investment-strategy-mode').value;
-            const profitReinvestGroup = document.getElementById('profit-reinvest-group');
-            const walletReserveGroup = document.getElementById('wallet-reserve-group');
-
-            switch (mode) {
-                case 'disabled':
-                    profitReinvestGroup.style.display = 'none';
-                    walletReserveGroup.style.display = 'none';
-                    setProfitReinvest(0);
-                    setWalletReserve(100);
-                    break;
-                case 'full-reinvest':
-                    profitReinvestGroup.style.display = 'none';
-                    walletReserveGroup.style.display = 'none';
-                    setProfitReinvest(100);
-                    setWalletReserve(0);
-                    break;
-                case 'profit-split':
-                    profitReinvestGroup.style.display = 'block';
-                    walletReserveGroup.style.display = 'block';
-                    setProfitReinvest(50);
-                    setWalletReserve(50);
-                    break;
-                case 'base-only':
-                    profitReinvestGroup.style.display = 'none';
-                    walletReserveGroup.style.display = 'none';
-                    setProfitReinvest(0);
-                    setWalletReserve(100);
-                    break;
-                case 'custom':
-                    profitReinvestGroup.style.display = 'block';
-                    walletReserveGroup.style.display = 'block';
-                    break;
-            }
-
-            updateInvestmentPreview();
-        }
 
         function setProfitReinvest(value) {
             profitReinvestSlider.value = value;
             profitReinvestValue.value = value;
         }
 
-        function setWalletReserve(value) {
-            walletReserveSlider.value = value;
-            walletReserveValue.value = value;
+        function updateButtonStyles() {
+            const percent = parseInt(profitReinvestValue.value) || 0;
+
+            // Highlight active button
+            if (percent === 0) {
+                strategyFixedBtn.style.borderColor = 'rgba(0, 217, 255, 0.8)';
+                strategyFixedBtn.style.background = 'rgba(0, 217, 255, 0.2)';
+                strategyFullBtn.style.borderColor = 'rgba(0, 217, 255, 0.3)';
+                strategyFullBtn.style.background = '#16213e';
+            } else if (percent === 100) {
+                strategyFullBtn.style.borderColor = 'rgba(0, 217, 255, 0.8)';
+                strategyFullBtn.style.background = 'rgba(0, 217, 255, 0.2)';
+                strategyFixedBtn.style.borderColor = 'rgba(0, 217, 255, 0.3)';
+                strategyFixedBtn.style.background = '#16213e';
+            } else {
+                // Manual adjustment - no button highlighted
+                strategyFixedBtn.style.borderColor = 'rgba(0, 217, 255, 0.3)';
+                strategyFixedBtn.style.background = '#16213e';
+                strategyFullBtn.style.borderColor = 'rgba(0, 217, 255, 0.3)';
+                strategyFullBtn.style.background = '#16213e';
+            }
         }
 
         function updateInvestmentPreview() {
-            const mode = document.getElementById('investment-strategy-mode').value;
             const baseAmount = parseFloat(document.getElementById('investment-base-amount').value) || 50;
             const profitPercent = parseFloat(profitReinvestValue.value) || 0;
-            const walletPercent = parseFloat(walletReserveValue.value) || 0;
             const lossFallback = document.getElementById('loss-fallback').value;
 
             // Example profit scenario (+€10)
@@ -1333,48 +1310,22 @@
             let nextBuyLoss;
             if (lossFallback === 'stop-loss-proceeds') {
                 // Stop-loss would give back ~€42.50 (if bought at €50 and hit -15%)
-                // But we'll use base amount since it's higher
-                nextBuyLoss = Math.max(baseAmount, 42.50);
+                const stopLossProceeds = 42.50;
+                // Wallet must have at least €5 to buy
+                if (stopLossProceeds < 5) {
+                    nextBuyLoss = baseAmount;
+                } else {
+                    nextBuyLoss = stopLossProceeds;
+                }
             } else {
                 nextBuyLoss = baseAmount;
             }
             document.getElementById('preview-loss').textContent = nextBuyLoss.toFixed(2);
-
-            // Validate percentages for custom mode
-            const validationMsg = document.getElementById('strategy-validation-message');
-            if (mode === 'custom') {
-                const total = profitPercent + walletPercent;
-                if (total !== 100) {
-                    validationMsg.style.display = 'block';
-                    validationMsg.style.background = 'rgba(255, 68, 102, 0.2)';
-                    validationMsg.style.border = '1px solid rgba(255, 68, 102, 0.5)';
-                    validationMsg.style.color = '#ff4466';
-                    validationMsg.textContent = `⚠️ Warning: Profit Reinvest (${profitPercent}%) + Wallet Reserve (${walletPercent}%) must equal 100%. Current total: ${total}%`;
-                } else {
-                    validationMsg.style.display = 'block';
-                    validationMsg.style.background = 'rgba(67, 233, 123, 0.2)';
-                    validationMsg.style.border = '1px solid rgba(67, 233, 123, 0.5)';
-                    validationMsg.style.color = '#43e97b';
-                    validationMsg.textContent = '✅ Valid: Percentages total 100%';
-                }
-            } else {
-                validationMsg.style.display = 'none';
-            }
-
-            // Validate minimum €5 after fees
-            const FEE_RATE = 0.0025;
-            const netBuyProfit = nextBuyProfit * (1 - FEE_RATE);
-            if (netBuyProfit < 5) {
-                validationMsg.style.display = 'block';
-                validationMsg.style.background = 'rgba(255, 68, 102, 0.2)';
-                validationMsg.style.border = '1px solid rgba(255, 68, 102, 0.5)';
-                validationMsg.style.color = '#ff4466';
-                validationMsg.textContent = `⚠️ Warning: Buy amount after fees (€${netBuyProfit.toFixed(2)}) is below €5 minimum!`;
-            }
         }
 
         // Initialize on page load
-        applyStrategyPreset();
+        updateButtonStyles();
+        updateInvestmentPreview();
 
         // Start button
         document.getElementById('start-btn').addEventListener('click', async () => {
@@ -1404,25 +1355,16 @@
                 return;
             }
 
-            // V2.0 Phase 3B: Get investment strategy configuration
-            const strategyMode = document.getElementById('investment-strategy-mode').value;
+            // V2.0 Phase 3B: Get investment strategy configuration (simplified)
+            const profitPercent = parseFloat(profitReinvestValue.value) || 0;
             const investmentStrategy = {
-                enabled: strategyMode !== 'disabled',
-                mode: strategyMode,
+                enabled: profitPercent > 0,
+                mode: profitPercent === 0 ? 'disabled' : (profitPercent === 100 ? 'full-reinvest' : 'custom'),
                 baseAmount: parseFloat(document.getElementById('investment-base-amount').value) || 50,
-                profitReinvestPercent: parseFloat(profitReinvestValue.value) || 0,
-                walletReservePercent: parseFloat(walletReserveValue.value) || 0,
+                profitReinvestPercent: profitPercent,
+                walletReservePercent: 100 - profitPercent,
                 lossFallback: document.getElementById('loss-fallback').value
             };
-
-            // Validate custom strategy percentages
-            if (strategyMode === 'custom') {
-                const total = investmentStrategy.profitReinvestPercent + investmentStrategy.walletReservePercent;
-                if (total !== 100) {
-                    showError(`Invalid strategy: Percentages must total 100% (currently ${total}%)`);
-                    return;
-                }
-            }
 
             // Send configuration to server
             socket.emit('trading-config', {

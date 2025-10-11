@@ -1202,9 +1202,18 @@ async function startTradingWithConfig(config) {
         } else if (lastProfit < 0) {
             // Loss scenario: Use fallback strategy
             if (strategy.lossFallback === 'stop-loss-proceeds') {
-                // Use stop-loss proceeds if higher than base amount
+                // Use stop-loss proceeds if >= €5 (minimum buy requirement)
                 const stopLossProceeds = Math.abs(lastProfit);
-                nextBuyAmount = Math.max(strategy.baseAmount, stopLossProceeds);
+                const FEE_RATE = 0.0025;
+                const netProceeds = stopLossProceeds * (1 - FEE_RATE);
+
+                // If stop-loss proceeds would give < €5 net after fees, use base amount
+                if (netProceeds < 5) {
+                    console.log(`[${asset.market}] Stop-loss proceeds (€${stopLossProceeds.toFixed(2)}) below €5 minimum, using base amount instead`);
+                    nextBuyAmount = strategy.baseAmount;
+                } else {
+                    nextBuyAmount = stopLossProceeds;
+                }
             } else {
                 // Use base amount
                 nextBuyAmount = strategy.baseAmount;

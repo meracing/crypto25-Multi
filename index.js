@@ -1066,7 +1066,7 @@ async function startTradingWithConfig(config) {
             // State already updated above (line 696)
         }
 
-        // V2.0 Phase 2C: Include batch data in check event
+        // V2.0 Phase 2C/3C: Include batch data and portfolio tracking in check event
         io.emit('check', {
             market: asset.market,
             amount: displayAmount,
@@ -1076,7 +1076,11 @@ async function startTradingWithConfig(config) {
             wallet,
             eventIndex,
             eventTime,
-            batches: asset.batches || [] // Include current batches for frontend display
+            batches: asset.batches || [], // Include current batches for frontend display
+            // V2.0 Phase 3C: Portfolio tracking data
+            totalProfit: asset.totalProfit || 0,
+            totalInvested: asset.totalInvested || 0,
+            totalTrades: asset.totalTrades || 0
         });
 
         // Emit max-price only if we're still in SELL state (didn't just sell)

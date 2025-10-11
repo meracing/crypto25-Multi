@@ -479,6 +479,40 @@
                 <div id="wallet-display"><small>💼 Wallet</small><div id="wallet">-</div></div>
             </div>
 
+            <!-- V2.0 Phase 3C: Portfolio Tracking -->
+            <div class="chart-container" id="portfolio-container" style="margin-top: 15px; display: none;">
+                <div class="chart-title">📊 Portfolio Overview</div>
+
+                <!-- Total Portfolio Value -->
+                <div style="background: linear-gradient(135deg, rgba(79, 172, 254, 0.15) 0%, rgba(0, 242, 254, 0.15) 100%); border: 1px solid rgba(79, 172, 254, 0.3); border-radius: 12px; padding: 20px; margin-bottom: 20px;">
+                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+                        <div>
+                            <div style="font-size: 0.8rem; color: #9db4d1; margin-bottom: 6px;">💰 Total Value</div>
+                            <div id="portfolio-total-value" style="font-size: 1.6rem; font-weight: 700; color: #4facfe;">€0.00</div>
+                            <div style="font-size: 0.75rem; color: #7b8fa1; margin-top: 4px;">Wallet + Crypto</div>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.8rem; color: #9db4d1; margin-bottom: 6px;">📈 Total Profit/Loss</div>
+                            <div id="portfolio-total-profit" style="font-size: 1.6rem; font-weight: 700;">€0.00</div>
+                            <div id="portfolio-profit-percent" style="font-size: 0.75rem; margin-top: 4px;"></div>
+                        </div>
+                        <div>
+                            <div style="font-size: 0.8rem; color: #9db4d1; margin-bottom: 6px;">🔄 Total Trades</div>
+                            <div id="portfolio-total-trades" style="font-size: 1.6rem; font-weight: 700; color: #e8eaed;">0</div>
+                            <div style="font-size: 0.75rem; color: #7b8fa1; margin-top: 4px;">Completed</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Per-Asset Performance -->
+                <div>
+                    <div style="font-size: 0.9rem; font-weight: 700; color: #9db4d1; margin-bottom: 12px;">Per-Asset Performance</div>
+                    <div id="asset-performance-list" style="display: flex; flex-direction: column; gap: 10px;">
+                        <!-- Asset performance cards will be inserted here -->
+                    </div>
+                </div>
+            </div>
+
             <!-- Batch Display Panel - V2.0 Phase 2C -->
             <div class="chart-container" id="batches-container" style="margin-top: 15px; display: none;">
                 <div class="chart-title">📦 Active Batches</div>
@@ -956,6 +990,130 @@
         }
         assetData[market].batches = batches || [];
         renderBatchDisplay();
+    }
+
+    // ============================================================
+    // V2.0 Phase 3C - Portfolio Tracking Functions
+    // ============================================================
+    function updatePortfolioDisplay() {
+        const container = $('portfolio-container');
+        if (!container) return;
+
+        // Calculate portfolio metrics
+        let totalProfit = 0;
+        let totalInvested = 0;
+        let totalTrades = 0;
+        let totalCryptoValue = 0;
+        const assetPerformance = [];
+
+        selectedMarkets.forEach(market => {
+            const asset = assetData[market];
+            if (!asset) return;
+
+            // Get asset tracking data (from backend)
+            const assetTotalProfit = asset.totalProfit || 0;
+            const assetTotalInvested = asset.totalInvested || 0;
+            const assetTotalTrades = asset.totalTrades || 0;
+
+            // Calculate current crypto holdings value
+            const batches = asset.batches || [];
+            let assetCryptoValue = 0;
+            batches.forEach(batch => {
+                if (batch.remainingCrypto > 0 && asset.currentPrice) {
+                    assetCryptoValue += batch.remainingCrypto * asset.currentPrice;
+                }
+            });
+
+            // Accumulate totals
+            totalProfit += assetTotalProfit;
+            totalInvested += assetTotalInvested;
+            totalTrades += assetTotalTrades;
+            totalCryptoValue += assetCryptoValue;
+
+            // Store per-asset performance
+            if (assetTotalTrades > 0 || assetCryptoValue > 0) {
+                const assetProfitPercent = assetTotalInvested > 0 ? (assetTotalProfit / assetTotalInvested) * 100 : 0;
+                assetPerformance.push({
+                    market: market,
+                    profit: assetTotalProfit,
+                    profitPercent: assetProfitPercent,
+                    invested: assetTotalInvested,
+                    trades: assetTotalTrades,
+                    cryptoValue: assetCryptoValue
+                });
+            }
+        });
+
+        // If no trading activity, hide the portfolio
+        if (totalTrades === 0 && totalCryptoValue === 0) {
+            container.style.display = 'none';
+            return;
+        }
+
+        // Show portfolio container
+        container.style.display = 'block';
+
+        // Get current wallet balance
+        const walletEl = $('wallet');
+        const currentWallet = walletEl ? parseFloat(walletEl.innerText.replace('€', '').replace(',', '')) || 0 : 0;
+
+        // Calculate total portfolio value (wallet + crypto holdings)
+        const totalPortfolioValue = currentWallet + totalCryptoValue;
+
+        // Update total portfolio metrics
+        $('portfolio-total-value').textContent = `€${totalPortfolioValue.toFixed(2)}`;
+
+        const profitEl = $('portfolio-total-profit');
+        const profitPercentEl = $('portfolio-profit-percent');
+        const totalProfitPercent = totalInvested > 0 ? (totalProfit / totalInvested) * 100 : 0;
+
+        profitEl.textContent = `€${totalProfit.toFixed(2)}`;
+        profitEl.style.color = totalProfit >= 0 ? '#43e97b' : '#fa709a';
+
+        profitPercentEl.textContent = `${totalProfit >= 0 ? '+' : ''}${totalProfitPercent.toFixed(2)}% Return`;
+        profitPercentEl.style.color = totalProfit >= 0 ? '#43e97b' : '#fa709a';
+
+        $('portfolio-total-trades').textContent = totalTrades.toString();
+
+        // Render per-asset performance cards
+        const assetListEl = $('asset-performance-list');
+        if (assetListEl && assetPerformance.length > 0) {
+            assetListEl.innerHTML = assetPerformance.map(asset => {
+                const profitClass = asset.profit >= 0 ? 'positive' : 'negative';
+                const profitSign = asset.profit >= 0 ? '+' : '';
+
+                return `
+                    <div style="background: rgba(30, 36, 58, 0.6); border: 1px solid rgba(79, 172, 254, 0.2); border-radius: 10px; padding: 14px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <div style="font-size: 0.95rem; font-weight: 700; color: #4facfe;">${asset.market}</div>
+                            <div style="font-size: 0.95rem; font-weight: 700; color: ${asset.profit >= 0 ? '#43e97b' : '#fa709a'};">
+                                ${profitSign}€${asset.profit.toFixed(2)} (${profitSign}${asset.profitPercent.toFixed(2)}%)
+                            </div>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-size: 0.8rem;">
+                            <div>
+                                <div style="color: #7b8fa1;">Invested</div>
+                                <div style="color: #e8eaed; font-weight: 600;">€${asset.invested.toFixed(2)}</div>
+                            </div>
+                            <div>
+                                <div style="color: #7b8fa1;">Holdings</div>
+                                <div style="color: #e8eaed; font-weight: 600;">€${asset.cryptoValue.toFixed(2)}</div>
+                            </div>
+                            <div>
+                                <div style="color: #7b8fa1;">Trades</div>
+                                <div style="color: #e8eaed; font-weight: 600;">${asset.trades}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+
+    // Update portfolio display whenever asset data changes
+    function onAssetDataUpdate() {
+        renderBatchDisplay();
+        updatePortfolioDisplay();
     }
 
     socket.on('market-selected', (markets) => {
@@ -1683,7 +1841,7 @@
     socket.on('check', (data) => {
         if (!data || !data.market) return;
 
-        const { market, amount, price, reason, action, wallet, eventIndex, eventTime, batches } = data;
+        const { market, amount, price, reason, action, wallet, eventIndex, eventTime, batches, totalProfit, totalInvested, totalTrades } = data;
 
         // Debug: log check events that might update wallet
         if (wallet !== undefined && wallet !== null && action) {
@@ -1715,6 +1873,16 @@
         if (batches !== undefined && batches !== null) {
             updateBatchData(market, batches);
         }
+
+        // V2.0 Phase 3C - Update portfolio tracking data
+        if (assetData[market]) {
+            assetData[market].totalProfit = totalProfit !== undefined ? totalProfit : (assetData[market].totalProfit || 0);
+            assetData[market].totalInvested = totalInvested !== undefined ? totalInvested : (assetData[market].totalInvested || 0);
+            assetData[market].totalTrades = totalTrades !== undefined ? totalTrades : (assetData[market].totalTrades || 0);
+        }
+
+        // Update portfolio display
+        updatePortfolioDisplay();
 
         // table update (guard types) - only add if we have an index (buy/sell event)
         if (eventIndex !== null && eventIndex !== undefined && typeof reason === 'string' && !reason.startsWith('No action required') && !reason.startsWith('Waiting')) {
